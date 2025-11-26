@@ -445,8 +445,8 @@ onUnmounted(() => {
           <el-input
             v-model="searchText"
             placeholder="搜索字幕..."
-            size="small"
             clearable
+            class="search-input"
           >
             <template #prefix>
               <span class="i-mdi-magnify"></span>
@@ -454,10 +454,11 @@ onUnmounted(() => {
           </el-input>
           <el-button
             type="primary"
-            size="small"
             circle
-            class="ml-2"
+            size="small"
+            class="add-button"
             @click="handleAddEntry"
+            :title="'添加新字幕'"
           >
             <span class="i-mdi-plus"></span>
           </el-button>
@@ -707,10 +708,53 @@ onUnmounted(() => {
 }
 
 .list-header {
-  padding: 1rem;
+  padding: 0.5rem;
   border-bottom: 1px solid #e5e7eb;
   display: flex;
   align-items: center;
+  gap: 0.5rem;
+}
+
+.search-input {
+  flex: 1;
+}
+
+.search-input :deep(.el-input__wrapper) {
+  padding: 0.5rem 0.75rem;
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+  transition: all 0.2s;
+  height: 2.25rem;
+  display: flex;
+  align-items: center;
+}
+
+.search-input :deep(.el-input__wrapper:hover) {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.search-input :deep(.el-input__wrapper.is-focus) {
+  background: #f9fafb;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.search-input :deep(.el-input__input) {
+  font-size: 0.875rem;
+}
+
+.search-input :deep(.el-input__prefix) {
+  color: #9ca3af;
+}
+
+.add-button {
+  flex-shrink: 0;
+}
+
+.add-button :deep(span) {
+  font-size: 1rem;
 }
 
 .subtitle-list {
