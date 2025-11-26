@@ -316,8 +316,27 @@ export const useSubtitleStore = defineStore('subtitle', () => {
       throw new Error('No file loaded')
     }
 
-    // TODO: Call Tauri command to save file
-    historyIndex.value = -1
+    // 调用 Tauri 命令保存文件
+    const { invoke } = await import('@tauri-apps/api/core')
+
+    // 将当前的字幕条目写回 SRT 文件
+    const updatedFile: SRTFile = {
+      ...srtFile.value,
+      entries: entries.value,
+    }
+
+    try {
+      await invoke('write_srt', {
+        filePath: srtFile.value.path,
+        entries: entries.value,
+      })
+
+      // 保存成功后，重置历史索引（标记为已保存）
+      historyIndex.value = -1
+    } catch (error) {
+      console.error('Failed to save SRT file:', error)
+      throw error
+    }
   }
 
   // 获取当前文件路径

@@ -161,12 +161,24 @@ const handleSave = async () => {
 }
 
 // 保存当前字幕编辑
-const saveCurrentEntry = () => {
+const saveCurrentEntry = async () => {
   if (!currentEntry.value) return
 
   if (editingText.value !== currentEntry.value.text) {
     subtitleStore.updateEntryText(currentEntry.value.id, editingText.value)
+  }
+
+  // 保存当前字幕编辑后，也保存整个文件
+  if (!subtitleStore.currentFilePath) {
+    ElMessage.warning('没有可保存的文件')
+    return
+  }
+
+  try {
+    await subtitleStore.saveToFile()
     ElMessage.success('已保存')
+  } catch (error) {
+    ElMessage.error(`保存失败: ${error}`)
   }
 }
 
