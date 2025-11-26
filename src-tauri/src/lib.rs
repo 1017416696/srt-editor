@@ -113,64 +113,34 @@ pub fn run() {
                 app.set_menu(menu)?;
             }
 
-            // 处理菜单事件（在 macOS 条件之外，确保总是被注册）
+            // 处理菜单事件
             app.on_menu_event(|app_handle, event| {
-                println!("Menu event triggered: {}", event.id().0);
                 match event.id().0.as_str() {
                     "open" => {
-                        println!("Open menu clicked - executing open file via JavaScript");
                         if let Some(window) = app_handle.get_webview_window("main") {
-                            // 使用 evaluate_script 直接在前端执行 JavaScript
                             let js_code = r#"
                                 (async () => {
-                                    console.log('✓ JavaScript executed: Opening file dialog...');
-                                    if (window.__handleMenuOpenFile && typeof window.__handleMenuOpenFile === 'function') {
-                                        await window.__handleMenuOpenFile();
-                                    } else {
-                                        console.warn('Handler not available');
+                                    if (window.__globalOpenFile && typeof window.__globalOpenFile === 'function') {
+                                        await window.__globalOpenFile();
                                     }
                                 })();
                             "#;
-                            match window.eval(js_code) {
-                                Ok(_) => {
-                                    println!("✓ Successfully executed JavaScript to open file");
-                                }
-                                Err(e) => {
-                                    println!("✗ Failed to execute JavaScript: {:?}", e);
-                                }
-                            }
-                        } else {
-                            println!("✗ Main window not found!");
+                            let _ = window.eval(js_code);
                         }
                     }
                     "save" => {
-                        println!("Save menu clicked - executing save via JavaScript");
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let js_code = r#"
                                 (async () => {
-                                    console.log('✓ JavaScript executed: Saving file...');
-                                    if (window.__handleMenuSave && typeof window.__handleMenuSave === 'function') {
-                                        await window.__handleMenuSave();
-                                    } else {
-                                        console.warn('Handler not available');
+                                    if (window.__globalSaveFile && typeof window.__globalSaveFile === 'function') {
+                                        await window.__globalSaveFile();
                                     }
                                 })();
                             "#;
-                            match window.eval(js_code) {
-                                Ok(_) => {
-                                    println!("✓ Successfully executed JavaScript to save file");
-                                }
-                                Err(e) => {
-                                    println!("✗ Failed to execute JavaScript: {:?}", e);
-                                }
-                            }
-                        } else {
-                            println!("✗ Main window not found!");
+                            let _ = window.eval(js_code);
                         }
                     }
-                    _ => {
-                        println!("Other menu event: {}", event.id().0);
-                    }
+                    _ => {}
                 }
             });
 

@@ -7,6 +7,9 @@ import App from './App.vue'
 import router from './router'
 import './assets/main.css'
 import { listen } from '@tauri-apps/api/event'
+import { open } from '@tauri-apps/plugin-dialog'
+import { invoke } from '@tauri-apps/api/core'
+import { ElMessage } from 'element-plus'
 
 if (process.env.NODE_ENV === 'development') {
   devtools.connect('http://localhost', 8098)
@@ -19,27 +22,92 @@ app.use(pinia)
 app.use(router)
 app.use(ElementPlus)
 
+// 获取 store 的引用
+const subtitleStore = pinia.state.value.subtitle
+const audioStore = pinia.state.value.audio
+
+// 全局打开文件函数
+const globalOpenFile = async () => {
+  try {
+    const selected = await open({
+      multiple: false,
+      filters: [
+        {
+          name: 'SRT 字幕文件',
+          extensions: ['srt'],
+        },
+      ],
+    })
+
+    if (selected) {
+      const { useSubtitleStore } = await import('./stores/subtitle')
+      const store = useSubtitleStore()
+      const srtFile = await invoke('read_srt', { filePath: selected })
+      await store.loadSRTFile(srtFile)
+      ElMessage.success('SRT 文件加载成功')
+
+      // 如果当前不在编辑器页面，导航到编辑器
+      if (router.currentRoute.value.path !== '/editor') {
+        router.push('/editor')
+      }
+    }
+  } catch (error) {
+    ElMessage.error(`加载失败: ${error}`)
+  }
+}
+
+// 全局保存文件函数
+const globalSaveFile = async () => {
+  try {
+    const { useSubtitleStore } = await import('./stores/subtitle')
+    const store = useSubtitleStore()
+    if (!store.currentFilePath) {
+      ElMessage.warning('没有可保存的文件')
+      return
+    }
+    await store.saveToFile()
+    ElMessage.success('保存成功')
+  } catch (error) {
+    ElMessage.error(`保存失败: ${error}`)
+  }
+}
+
+// 将全局函数暴露到 window 对象
+;(window as any).__globalOpenFile = globalOpenFile
+;(window as any).__globalSaveFile = globalSaveFile
+
 // 全局菜单事件监听器（在应用启动时注册）
 listen<void>('menu:open-file', async () => {
-  console.log('✓ Global menu:open-file event received - triggering callback')
   // 触发全局回调函数（由各页面注册）
   if ((window as any).__handleMenuOpenFile && typeof (window as any).__handleMenuOpenFile === 'function') {
-    console.log('Calling registered menu open file handler...')
     await (window as any).__handleMenuOpenFile()
-  } else {
-    console.warn('No menu open file handler registered')
   }
-}).catch(err => console.error('Failed to listen menu:open-file:', err))
+}).catch(() => {})
 
 listen<void>('menu:save', async () => {
-  console.log('✓ Global menu:save event received - triggering callback')
   // 触发全局回调函数（由各页面注册）
   if ((window as any).__handleMenuSave && typeof (window as any).__handleMenuSave === 'function') {
-    console.log('Calling registered menu save handler...')
     await (window as any).__handleMenuSave()
-  } else {
-    console.warn('No menu save handler registered')
   }
-}).catch(err => console.error('Failed to listen menu:save:', err))
+}).catch(() => {})
+
+// 全局键盘快捷键监听
+document.addEventListener('keydown', (e: KeyboardEvent) => {
+  const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform)
+
+  // 检查 Cmd+O (macOS) 或 Ctrl+O (Windows/Linux)
+  if ((isMac && e.metaKey && e.key.toLowerCase() === 'o') ||
+      (!isMac && e.ctrlKey && e.key.toLowerCase() === 'o')) {
+    e.preventDefault()
+    globalOpenFile()
+  }
+
+  // 检查 Cmd+S (macOS) 或 Ctrl+S (Windows/Linux)
+  if ((isMac && e.metaKey && e.key.toLowerCase() === 's') ||
+      (!isMac && e.ctrlKey && e.key.toLowerCase() === 's')) {
+    e.preventDefault()
+    globalSaveFile()
+  }
+}, true)
 
 app.mount('#app')

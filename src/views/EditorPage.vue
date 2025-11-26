@@ -240,44 +240,35 @@ onMounted(async () => {
   }
 
   try {
-    console.log('EditorPage: Mounting and registering global menu handlers...')
-
     // 注册全局菜单处理函数（供 main.ts 中的全局监听器调用）
     ;(window as any).__handleMenuOpenFile = async () => {
-      console.log('✓ EditorPage: Global menu open handler triggered')
       await handleOpenFile()
     }
 
     ;(window as any).__handleMenuSave = async () => {
-      console.log('✓ EditorPage: Global menu save handler triggered')
       await handleSave()
     }
 
     // 同时还是添加本地监听器（以防万一）
     const unlistenOpenFile = await listen<void>('menu:open-file', async () => {
-      console.log('✓ EditorPage: Direct menu open-file event received')
       await handleOpenFile()
     })
 
     const unlistenSave = await listen<void>('menu:save', async () => {
-      console.log('✓ EditorPage: Direct menu save event received')
       await handleSave()
     })
 
-    console.log('✓ EditorPage: All menu handlers registered successfully')
-
-    // 添加键盘快捷键监听
-    window.addEventListener('keydown', handleKeydown)
+    // 添加键盘快捷键监听（添加到 document 而不是 window，确保捕获所有键盘事件）
+    document.addEventListener('keydown', handleKeydown, true)
 
     // 在组件卸载时清理所有监听器
     onBeforeUnmount(() => {
-      console.log('EditorPage: Cleaning up event listeners and handlers...')
       unlistenOpenFile()
       unlistenSave()
       // 清除全局处理函数
       ;(window as any).__handleMenuOpenFile = null
       ;(window as any).__handleMenuSave = null
-      window.removeEventListener('keydown', handleKeydown)
+      document.removeEventListener('keydown', handleKeydown, true)
     })
   } catch (error) {
     console.error('Error setting up menu handlers:', error)
@@ -493,6 +484,44 @@ const goBack = async () => {
   router.push('/')
 }
 
+// 检测平台特定的快捷键修饰符
+const getKeyModifier = (e: KeyboardEvent): string => {
+  const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform)
+  if (isMac && e.metaKey) return 'Cmd+'
+  if (e.ctrlKey) return 'Ctrl+'
+  return ''
+}
+
+// 规范化键名（处理大小写和特殊键）
+const normalizeKeyName = (key: string): string => {
+  const keyMap: Record<string, string> = {
+    'o': 'o',
+    'O': 'o',
+    's': 's',
+    'S': 's',
+    'z': 'z',
+    'Z': 'z',
+    'f': 'f',
+    'F': 'f',
+    'n': 'n',
+    'N': 'n',
+  }
+  return keyMap[key] || key.toLowerCase()
+}
+
+// 构建快捷键字符串（考虑平台差异）
+const buildKeyString = (e: KeyboardEvent): string => {
+  const modifier = getKeyModifier(e)
+
+  // 对于 Shift 的处理
+  let baseKey = normalizeKeyName(e.key)
+  if (e.shiftKey && modifier) {
+    baseKey = `Shift+${baseKey}`
+  }
+
+  return `${modifier}${baseKey}`
+}
+
 // 键盘快捷键
 const handleKeydown = (e: KeyboardEvent) => {
   const target = e.target as HTMLElement
@@ -502,30 +531,38 @@ const handleKeydown = (e: KeyboardEvent) => {
     target instanceof HTMLTextAreaElement ||
     target instanceof HTMLInputElement
 
-  // 如果在文本框内，不处理快捷键（除了保存）
-  if (isInTextInput) {
-    const shortcuts = configStore.keyboardShortcuts
-    const key = `${e.ctrlKey ? 'Ctrl+' : ''}${e.key}`
+  const shortcuts = configStore.keyboardShortcuts
+  const pressedKey = buildKeyString(e)
 
-    // 只允许在文本框内使用 Ctrl+S 保存
-    if (shortcuts.save === key) {
+  // 如果在文本框内，只处理保存和打开快捷键
+  if (isInTextInput) {
+    if (shortcuts.save === pressedKey) {
       e.preventDefault()
       handleSave()
+    } else if (shortcuts.open === pressedKey) {
+      e.preventDefault()
+      handleOpenFile()
     }
     // 不处理其他快捷键，允许正常输入（包括空格）
     return
   }
 
   // 不在文本框内，处理全局快捷键
-  const shortcuts = configStore.keyboardShortcuts
-  const key = `${e.ctrlKey ? 'Ctrl+' : ''}${e.key}`
-
-  if (shortcuts.save === key) {
+  if (shortcuts.save === pressedKey) {
     e.preventDefault()
     handleSave()
-  } else if (shortcuts.playPause === key.toLowerCase()) {
+  } else if (shortcuts.open === pressedKey) {
+    e.preventDefault()
+    handleOpenFile()
+  } else if (shortcuts.playPause === pressedKey.toLowerCase()) {
     e.preventDefault()
     audioStore.togglePlay()
+  } else if (shortcuts.addEntry === pressedKey) {
+    e.preventDefault()
+    handleAddEntry()
+  } else if (shortcuts.deleteEntry === pressedKey) {
+    e.preventDefault()
+    handleDeleteEntry()
   }
 }
 </script>

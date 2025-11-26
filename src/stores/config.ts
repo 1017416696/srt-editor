@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import type { EditorConfig, KeyBinding } from '@/types/subtitle'
 
 export const useConfigStore = defineStore('config', () => {
@@ -60,19 +60,25 @@ export const useConfigStore = defineStore('config', () => {
   // 初始化时加载配置
   loadConfig()
 
-  // 创建快捷键映射对象
+  // 检测平台
+  const isMac = () => typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform)
+
+  // 创建快捷键映射对象（支持平台特定快捷键）
   const keyboardShortcuts = computed(() => {
+    const isApple = isMac()
     const shortcuts: Record<string, string> = {}
     keyBindings.value.forEach((binding) => {
       shortcuts[binding.action.replace(/-([a-z])/g, (g) => g[1]?.toUpperCase() || g)] = binding.key
     })
     return {
-      save: 'Ctrl+s',
-      undo: 'Ctrl+z',
-      redo: 'Ctrl+Shift+z',
+      // macOS 使用 Cmd，Windows/Linux 使用 Ctrl
+      save: isApple ? 'Cmd+s' : 'Ctrl+s',
+      open: isApple ? 'Cmd+o' : 'Ctrl+o',
+      undo: isApple ? 'Cmd+z' : 'Ctrl+z',
+      redo: isApple ? 'Cmd+Shift+z' : 'Ctrl+Shift+z',
       playPause: ' ',
-      find: 'Ctrl+f',
-      addEntry: 'Ctrl+n',
+      find: isApple ? 'Cmd+f' : 'Ctrl+f',
+      addEntry: isApple ? 'Cmd+n' : 'Ctrl+n',
       deleteEntry: 'Delete',
     }
   })
