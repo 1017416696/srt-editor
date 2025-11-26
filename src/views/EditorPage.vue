@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { useSubtitleStore } from '@/stores/subtitle'
 import { useAudioStore } from '@/stores/audio'
 import { useConfigStore } from '@/stores/config'
@@ -232,10 +233,54 @@ watch(() => audioStore.playerState.currentTime, (currentTime) => {
   }
 })
 
-// 初始化时选中第一条字幕
-onMounted(() => {
+// 初始化时选中第一条字幕，设置菜单监听和快捷键
+onMounted(async () => {
   if (subtitleStore.entries.length > 0) {
     selectedEntryId.value = subtitleStore.entries[0]?.id ?? null
+  }
+
+  try {
+    console.log('EditorPage: Mounting and registering global menu handlers...')
+
+    // 注册全局菜单处理函数（供 main.ts 中的全局监听器调用）
+    ;(window as any).__handleMenuOpenFile = async () => {
+      console.log('✓ EditorPage: Global menu open handler triggered')
+      await handleOpenFile()
+    }
+
+    ;(window as any).__handleMenuSave = async () => {
+      console.log('✓ EditorPage: Global menu save handler triggered')
+      await handleSave()
+    }
+
+    // 同时还是添加本地监听器（以防万一）
+    const unlistenOpenFile = await listen<void>('menu:open-file', async () => {
+      console.log('✓ EditorPage: Direct menu open-file event received')
+      await handleOpenFile()
+    })
+
+    const unlistenSave = await listen<void>('menu:save', async () => {
+      console.log('✓ EditorPage: Direct menu save event received')
+      await handleSave()
+    })
+
+    console.log('✓ EditorPage: All menu handlers registered successfully')
+
+    // 添加键盘快捷键监听
+    window.addEventListener('keydown', handleKeydown)
+
+    // 在组件卸载时清理所有监听器
+    onBeforeUnmount(() => {
+      console.log('EditorPage: Cleaning up event listeners and handlers...')
+      unlistenOpenFile()
+      unlistenSave()
+      // 清除全局处理函数
+      ;(window as any).__handleMenuOpenFile = null
+      ;(window as any).__handleMenuSave = null
+      window.removeEventListener('keydown', handleKeydown)
+    })
+  } catch (error) {
+    console.error('Error setting up menu handlers:', error)
   }
 })
 
@@ -483,14 +528,6 @@ const handleKeydown = (e: KeyboardEvent) => {
     audioStore.togglePlay()
   }
 }
-
-onMounted(() => {
-  window.addEventListener('keydown', handleKeydown)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeydown)
-})
 </script>
 
 <template>
@@ -505,8 +542,6 @@ onUnmounted(() => {
       </div>
 
       <div class="toolbar-right">
-        <el-button @click="handleOpenFile">打开文件</el-button>
-        <el-button>导出</el-button>
         <el-button type="primary" :disabled="!hasContent" @click="handleSave">
           保存
         </el-button>
