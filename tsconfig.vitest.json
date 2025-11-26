@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.app.json",
+  "include": ["tests/unit/**/*.ts"],
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.vitest.tsbuildinfo",
+    "types": ["node"]
+  }
+}

@@ -1,0 +1,61 @@
+@import 'tailwindcss';
+
+@plugin "@egoist/tailwindcss-icons" {
+  prefixes: mdi;
+}
+
+@theme {
+  --font-sans: -apple-system, BlinkMacSystemFont, Segoe UI, system-ui, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, sans-serif, Apple Color Emoji, Segoe UI Emoji, Segoe UI Symbol, Noto Color Emoji;
+  --font-mono: Cascadia Code, Consolas, Menlo, Ubuntu Mono, DejaVu Sans Mono, Courier New, monospace;
+}
+
+html {
+  @apply text-[14px] text-gray-200 bg-gray-800;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+}
+
+a,
+button {
+  @apply cursor-default select-none;
+}
+
+a {
+  @apply text-sky-500;
+}
+
+h1 {
+  @apply text-xl font-semibold;
+}
+
+p {
+  @apply py-1;
+}
+
+.btn {
+  @apply bg-gray-800 text-gray-200 px-3 py-2 rounded-md my-4 border border-gray-700 hover:bg-gray-700 inline-block;
+}
+
+/* Borrowed from tauri-create-app styles */
+.logo {
+  will-change: filter;
+  transition: 0.75s;
+  @apply mx-4 my-6 w-24 h-24;
+}
+
+.logo.vite:hover,
+.logo.tauri:hover,
+.logo.vue:hover {
+  filter: drop-shadow(0 0 2em #249b73);
+}
+
+input {
+  @apply bg-gray-700 text-gray-200 px-3 py-2 rounded-md my-4 border border-gray-700 mx-2;
+}
+
+input, textarea {
+  @apply select-auto;
+}
