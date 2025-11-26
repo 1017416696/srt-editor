@@ -197,10 +197,70 @@ export const useSubtitleStore = defineStore('subtitle', () => {
         ? Math.max(...entries.value.map((e) => e.id)) + 1
         : 1
 
+    // 计算新增字幕的时间
+    let startTime = { hours: 0, minutes: 0, seconds: 0, milliseconds: 0 }
+    let endTime = { hours: 0, minutes: 0, seconds: 1, milliseconds: 0 }
+
+    if (afterId !== undefined) {
+      // 在指定字幕后面插入
+      const afterIndex = entries.value.findIndex((e) => e.id === afterId)
+      const afterEntry = entries.value[afterIndex]
+
+      if (afterEntry) {
+        // 新字幕的开始时间 = 前一个字幕的结束时间
+        const afterEndMs = timeStampToMs(afterEntry.endTime)
+        const newStartMs = afterEndMs
+
+        // 新字幕的结束时间 = 新开始时间 + 1秒
+        const newEndMs = newStartMs + 1000
+
+        // 转换回时间戳格式
+        const startSeconds = Math.floor(newStartMs / 1000)
+        const endSeconds = Math.floor(newEndMs / 1000)
+
+        startTime = {
+          hours: Math.floor(startSeconds / 3600),
+          minutes: Math.floor((startSeconds % 3600) / 60),
+          seconds: startSeconds % 60,
+          milliseconds: newStartMs % 1000,
+        }
+
+        endTime = {
+          hours: Math.floor(endSeconds / 3600),
+          minutes: Math.floor((endSeconds % 3600) / 60),
+          seconds: endSeconds % 60,
+          milliseconds: newEndMs % 1000,
+        }
+      }
+    } else if (entries.value.length > 0) {
+      // 在末尾添加，时间接在最后一个字幕之后
+      const lastEntry = entries.value[entries.value.length - 1]
+      const lastEndMs = timeStampToMs(lastEntry.endTime)
+      const newStartMs = lastEndMs
+      const newEndMs = newStartMs + 1000
+
+      const startSeconds = Math.floor(newStartMs / 1000)
+      const endSeconds = Math.floor(newEndMs / 1000)
+
+      startTime = {
+        hours: Math.floor(startSeconds / 3600),
+        minutes: Math.floor((startSeconds % 3600) / 60),
+        seconds: startSeconds % 60,
+        milliseconds: newStartMs % 1000,
+      }
+
+      endTime = {
+        hours: Math.floor(endSeconds / 3600),
+        minutes: Math.floor((endSeconds % 3600) / 60),
+        seconds: endSeconds % 60,
+        milliseconds: newEndMs % 1000,
+      }
+    }
+
     const newEntry: SubtitleEntry = {
       id: newId,
-      startTime: { hours: 0, minutes: 0, seconds: 0, milliseconds: 0 },
-      endTime: { hours: 0, minutes: 0, seconds: 1, milliseconds: 0 },
+      startTime,
+      endTime,
       text: '',
     }
 
