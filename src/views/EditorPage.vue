@@ -257,6 +257,28 @@ const goBack = async () => {
 
 // 键盘快捷键
 const handleKeydown = (e: KeyboardEvent) => {
+  const target = e.target as HTMLElement
+
+  // 检查是否在文本输入框内
+  const isInTextInput =
+    target instanceof HTMLTextAreaElement ||
+    target instanceof HTMLInputElement
+
+  // 如果在文本框内，不处理快捷键（除了保存）
+  if (isInTextInput) {
+    const shortcuts = configStore.keyboardShortcuts
+    const key = `${e.ctrlKey ? 'Ctrl+' : ''}${e.key}`
+
+    // 只允许在文本框内使用 Ctrl+S 保存
+    if (shortcuts.save === key) {
+      e.preventDefault()
+      handleSave()
+    }
+    // 不处理其他快捷键，允许正常输入（包括空格）
+    return
+  }
+
+  // 不在文本框内，处理全局快捷键
   const shortcuts = configStore.keyboardShortcuts
   const key = `${e.ctrlKey ? 'Ctrl+' : ''}${e.key}`
 
