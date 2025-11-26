@@ -62,6 +62,34 @@ watch(currentEntry, (entry) => {
   }
 })
 
+// 搜索字幕文本
+const handleSearch = (query: string) => {
+  subtitleStore.search(query)
+
+  // 如果有搜索结果，选中第一个
+  if (subtitleStore.searchResults.length > 0) {
+    selectedEntryId.value = subtitleStore.searchResults[0] ?? null
+  }
+}
+
+// 监听搜索文本变化
+watch(searchText, (query) => {
+  handleSearch(query)
+})
+
+// 计算显示的字幕列表（根据搜索结果过滤）
+const filteredEntries = computed(() => {
+  if (!searchText.value) {
+    // 未搜索时显示全部
+    return subtitleStore.entries
+  }
+
+  // 搜索时只显示匹配的
+  return subtitleStore.entries.filter((entry) =>
+    subtitleStore.searchResults.includes(entry.id)
+  )
+})
+
 // 自动保存函数
 const autoSaveCurrentEntry = async () => {
   if (!currentEntry.value) return
@@ -438,7 +466,7 @@ onUnmounted(() => {
         <!-- 字幕列表 -->
         <div class="subtitle-list" ref="subtitleListContainer">
           <div
-            v-for="entry in subtitleStore.entries"
+            v-for="entry in filteredEntries"
             :key="entry.id"
             :ref="(el) => { if (el) subtitleItemRefs[entry.id] = el as HTMLElement }"
             class="subtitle-item"
@@ -457,6 +485,10 @@ onUnmounted(() => {
           </div>
 
           <!-- 空状态 -->
+          <div v-if="filteredEntries.length === 0 && hasContent" class="empty-state">
+            <p class="text-gray-400">未找到匹配的字幕</p>
+          </div>
+
           <div v-if="!hasContent" class="empty-state">
             <p class="text-gray-400">暂无字幕数据</p>
             <el-button type="text" @click="goBack">返回加载文件</el-button>
@@ -465,7 +497,12 @@ onUnmounted(() => {
 
         <!-- 底部统计 -->
         <div class="list-footer">
-          <span>{{ subtitleStore.entries.length }}/{{ subtitleStore.entries.length }} 字幕</span>
+          <span v-if="searchText">
+            {{ filteredEntries.length }}/{{ subtitleStore.entries.length }} 字幕
+          </span>
+          <span v-else>
+            {{ subtitleStore.entries.length }}/{{ subtitleStore.entries.length }} 字幕
+          </span>
         </div>
       </div>
 
