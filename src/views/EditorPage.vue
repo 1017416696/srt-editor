@@ -10,6 +10,23 @@ import { useConfigStore } from '@/stores/config'
 import { timeStampToMs } from '@/utils/time'
 import type { SRTFile, AudioFile } from '@/types/subtitle'
 
+// Debounce helper function
+function debounce<T extends (...args: any[]) => any>(func: T, wait: number) {
+  let timeout: ReturnType<typeof setTimeout> | null = null
+
+  return function executedFunction(...args: Parameters<T>) {
+    const later = () => {
+      timeout = null
+      func(...args)
+    }
+
+    if (timeout) {
+      clearTimeout(timeout)
+    }
+    timeout = setTimeout(later, wait)
+  }
+}
+
 const router = useRouter()
 const subtitleStore = useSubtitleStore()
 const audioStore = useAudioStore()
@@ -22,6 +39,8 @@ const selectedEntryId = ref<number | null>(null)
 const editingText = ref('')
 const subtitleListContainer = ref<HTMLElement | null>(null)
 const subtitleItemRefs: Record<number, HTMLElement | null> = {}
+const isUserEditing = ref(false) // 标记是否是用户在编辑
+let autoSaveTimer: ReturnType<typeof setTimeout> | null = null // 用于记录防抖计时器
 
 // 计算属性
 const hasContent = computed(() => subtitleStore.entries.length > 0)
@@ -38,9 +57,66 @@ const currentEntry = computed(() => {
 // 监听选中字幕变化，更新编辑文本
 watch(currentEntry, (entry) => {
   if (entry) {
+    isUserEditing.value = false // 标记为非用户编辑
     editingText.value = entry.text
   }
 })
+
+// 自动保存函数
+const autoSaveCurrentEntry = async () => {
+  if (!currentEntry.value) return
+
+  const hasChanges = editingText.value !== currentEntry.value.text
+  if (!hasChanges) {
+    // 如果没有变化，不保存也不显示消息
+    return
+  }
+
+  // 更新 store 中的数据
+  subtitleStore.updateEntryText(currentEntry.value.id, editingText.value)
+
+  // 保存当前字幕编辑后，也保存整个文件
+  if (!subtitleStore.currentFilePath) {
+    return
+  }
+
+  try {
+    await subtitleStore.saveToFile()
+    // 自动保存完成，不显示提示
+  } catch (error) {
+    ElMessage.error(`自动保存失败: ${error}`)
+  }
+}
+
+// 新的防抖逻辑：当用户离焦时立即保存，或者 1500ms 后自动保存
+const handleTextareaBlur = async () => {
+  isUserEditing.value = false
+
+  // 清除未执行的防抖计时器
+  if (autoSaveTimer) {
+    clearTimeout(autoSaveTimer)
+    autoSaveTimer = null
+  }
+
+  // 离焦时立即保存
+  await autoSaveCurrentEntry()
+}
+
+// 监听文本编辑，设置防抖计时器
+const handleTextInput = () => {
+  // 清除之前的计时器
+  if (autoSaveTimer) {
+    clearTimeout(autoSaveTimer)
+  }
+
+  // 设置新的计时器：1500ms 后保存
+  autoSaveTimer = setTimeout(() => {
+    if (isUserEditing.value) {
+      autoSaveCurrentEntry()
+    }
+    autoSaveTimer = null
+  }, 1500)
+}
 
 // 监听音频播放进度，自动更新当前字幕
 watch(() => audioStore.playerState.currentTime, (currentTime) => {
@@ -511,15 +587,13 @@ onUnmounted(() => {
               type="textarea"
               :rows="6"
               placeholder="支持拖动时间调整时间，点击时间精确编辑"
+              @focus="isUserEditing = true"
+              @blur="handleTextareaBlur"
+              @input="handleTextInput"
             />
             <div class="text-meta">
               <span>{{ editingText.length }} 字</span>
             </div>
-          </div>
-
-          <!-- 保存按钮 -->
-          <div class="edit-actions">
-            <el-button type="primary" @click="saveCurrentEntry">保存</el-button>
           </div>
 
           <!-- 底部操作 -->

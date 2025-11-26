@@ -11,10 +11,11 @@ pub struct TimeStamp {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct SubtitleEntry {
     pub id: u32,
+    #[serde(rename = "startTime")]
     pub start_time: TimeStamp,
+    #[serde(rename = "endTime")]
     pub end_time: TimeStamp,
     pub text: String,
 }
@@ -143,19 +144,30 @@ pub fn read_srt_file(file_path: &str) -> Result<SRTFile, String> {
 pub fn write_srt_file(file_path: &str, entries: &[SubtitleEntry]) -> Result<(), String> {
     let mut content = String::new();
 
-    for entry in entries {
+    for (index, entry) in entries.iter().enumerate() {
+        // Add subtitle ID (sequence number)
         content.push_str(&format!("{}\n", entry.id));
+
+        // Add timestamp line
         content.push_str(&format!(
             "{} --> {}\n",
             entry.start_time.to_string(),
             entry.end_time.to_string()
         ));
-        content.push_str(&format!("{}\n\n", entry.text));
+
+        // Add subtitle text
+        content.push_str(&format!("{}", entry.text));
+
+        // Add blank line between entries (except for the last one)
+        if index < entries.len() - 1 {
+            content.push_str("\n\n");
+        }
     }
 
     fs::write(file_path, content)
         .map_err(|e| format!("Failed to write file: {}", e))?;
 
+    println!("Successfully wrote {} subtitles to {}", entries.len(), file_path);
     Ok(())
 }
 
