@@ -557,23 +557,6 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <!-- 列表头部 -->
-        <div class="list-header">
-          <span class="search-info" v-if="searchText && subtitleStore.searchResults.length > 0">
-            {{ filteredEntries.length }}/{{ subtitleStore.entries.length }}
-          </span>
-          <el-button
-            type="primary"
-            circle
-            size="small"
-            class="add-btn"
-            @click="handleAddEntry"
-            title="添加新字幕"
-          >
-            +
-          </el-button>
-        </div>
-
         <!-- 字幕列表 -->
         <div class="subtitle-list" ref="subtitleListContainer">
           <div
@@ -968,40 +951,6 @@ onUnmounted(() => {
 .replace-all-btn:hover:not(:disabled) {
   background: #66b1ff;
   border-color: #66b1ff;
-}
-
-.regex-label {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.875rem;
-  color: #606266;
-  cursor: pointer;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.regex-label input {
-  cursor: pointer;
-}
-
-/* 列表头部 */
-.list-header {
-  padding: 0.5rem;
-  border-bottom: 1px solid #e5e7eb;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: #fafafa;
-}
-
-.search-info {
-  font-size: 0.8rem;
-  color: #909399;
-}
-
-.add-btn {
-  flex-shrink: 0;
 }
 
 .subtitle-list {
