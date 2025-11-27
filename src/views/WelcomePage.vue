@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { useSubtitleStore } from '@/stores/subtitle'
@@ -68,7 +67,6 @@ const openSRTFile = async () => {
       // 调用 Tauri 后端读取 SRT 文件
       const srtFile = await invoke<SRTFile>('read_srt', { filePath: selected })
       await subtitleStore.loadSRTFile(srtFile)
-      ElMessage.success({ message: 'SRT 文件加载成功', duration: 300 })
       isLoading.value = false
 
       // 加载成功后直接进入编辑器
@@ -76,7 +74,7 @@ const openSRTFile = async () => {
     }
   } catch (error) {
     isLoading.value = false
-    ElMessage.error(`加载失败: ${error}`)
+    // 加载失败，静默处理
   }
 }
 
@@ -106,7 +104,6 @@ const openAudioFile = async () => {
           format: fileExtension,
         }
         await audioStore.loadAudio(audioFile)
-        ElMessage.success('音频文件加载成功')
         isLoading.value = false
 
         // 如果字幕已加载，直接进入编辑器
@@ -115,12 +112,12 @@ const openAudioFile = async () => {
         }
       } catch (error) {
         isLoading.value = false
-        ElMessage.error(`加载失败: ${error}`)
+        // 加载失败，静默处理
       }
     }
   } catch (error) {
     isLoading.value = false
-    ElMessage.error(`加载失败: ${error}`)
+    // 加载失败，静默处理
   }
 }
 
@@ -134,19 +131,8 @@ const processFiles = async (files: File[]) => {
   isLoading.value = true
 
   try {
-    if (srtFile) {
-      // 在 Tauri 中，我们需要通过路径加载文件
-      // 这里暂时显示消息，实际实现需要 Tauri API 支持
-      ElMessage.warning('请使用"选择文件"按钮加载 SRT 文件')
-    }
-
-    if (audioFile) {
-      ElMessage.warning('请使用"选择文件"按钮加载音频文件')
-    }
-
-    if (!srtFile && !audioFile) {
-      ElMessage.warning('请拖放 SRT 或音频文件')
-    }
+    // 在 Tauri 中，我们需要通过路径加载文件
+    // 拖放功能暂不支持，需要用户使用"选择文件"按钮
   } finally {
     isLoading.value = false
   }

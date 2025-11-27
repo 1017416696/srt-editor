@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
@@ -100,7 +99,6 @@ const filteredEntries = computed(() => {
 // 执行替换全部
 const replaceAll = async () => {
   if (!searchText.value) {
-    ElMessage.warning('请输入要查找的文本')
     return
   }
 
@@ -119,12 +117,9 @@ const replaceAll = async () => {
     // 保存文件
     if (modifiedCount > 0) {
       await subtitleStore.saveToFile()
-      ElMessage.success(`成功修改 ${modifiedCount} 条字幕`)
-    } else {
-      ElMessage.info('未找到匹配的文本')
     }
   } catch (error) {
-    ElMessage.error(`替换失败: ${error}`)
+    // 替换失败，静默处理
   }
 }
 
@@ -151,13 +146,10 @@ const replaceOne = async () => {
         // 还有下一个，自动跳到下一个
         const nextId = subtitleStore.searchResults[currentIndex + 1]
         selectedEntryId.value = nextId ?? null
-      } else if (currentIndex === subtitleStore.searchResults.length - 1) {
-        // 已经是最后一个，提示
-        ElMessage.success('已替换，没有更多结果了')
       }
     }
   } catch (error) {
-    ElMessage.error(`替换失败: ${error}`)
+    // 替换失败，静默处理
   }
 }
 
@@ -183,7 +175,7 @@ const autoSaveCurrentEntry = async () => {
     await subtitleStore.saveToFile()
     // 自动保存完成，不显示提示
   } catch (error) {
-    ElMessage.error(`自动保存失败: ${error}`)
+    // 自动保存失败，静默处理
   }
 }
 
@@ -289,7 +281,6 @@ const handleOpenFile = async () => {
     if (selected) {
       const srtFile = await invoke<SRTFile>('read_srt', { filePath: selected })
       await subtitleStore.loadSRTFile(srtFile)
-      ElMessage.success({ message: 'SRT 文件加载成功', duration: 300 })
 
       // 选中第一条字幕
       if (subtitleStore.entries.length > 0) {
@@ -297,7 +288,7 @@ const handleOpenFile = async () => {
       }
     }
   } catch (error) {
-    ElMessage.error(`加载失败: ${error}`)
+    // 加载失败，静默处理
   }
 }
 
@@ -325,10 +316,9 @@ const handleOpenAudio = async () => {
         format: fileExtension,
       }
       await audioStore.loadAudio(audioFile)
-      ElMessage.success('音频文件加载成功')
     }
   } catch (error) {
-    ElMessage.error(`加载失败: ${error}`)
+    // 加载失败，静默处理
   }
 }
 
@@ -336,18 +326,7 @@ const handleOpenAudio = async () => {
 const handleRemoveAudio = async () => {
   if (!hasAudio) return
 
-  try {
-    await ElMessageBox.confirm('确定要删除当前加载的音频文件吗？', '确认', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-
-    audioStore.unloadAudio()
-    ElMessage.success('已删除音频文件')
-  } catch {
-    // 用户取消
-  }
+  audioStore.unloadAudio()
 }
 
 // 保存文件
@@ -356,16 +335,14 @@ const handleSave = async () => {
   if (isSaving) return
 
   if (!subtitleStore.currentFilePath) {
-    ElMessage.warning('没有可保存的文件')
     return
   }
 
   isSaving = true
   try {
     await subtitleStore.saveToFile()
-    ElMessage.success('保存成功')
   } catch (error) {
-    ElMessage.error(`保存失败: ${error}`)
+    // 保存失败，静默处理
   } finally {
     // 100ms 后允许再次保存
     setTimeout(() => {
@@ -384,15 +361,13 @@ const saveCurrentEntry = async () => {
 
   // 保存当前字幕编辑后，也保存整个文件
   if (!subtitleStore.currentFilePath) {
-    ElMessage.warning('没有可保存的文件')
     return
   }
 
   try {
     await subtitleStore.saveToFile()
-    ElMessage.success('已保存')
   } catch (error) {
-    ElMessage.error(`保存失败: ${error}`)
+    // 保存失败，静默处理
   }
 }
 
@@ -425,7 +400,6 @@ const selectEntry = (id: number) => {
 // 添加字幕
 const handleAddEntry = () => {
   subtitleStore.addEntry()
-  ElMessage.success('已添加新字幕')
 
   // 选中新添加的字幕
   const newEntry = subtitleStore.entries[subtitleStore.entries.length - 1]
@@ -438,30 +412,19 @@ const handleAddEntry = () => {
 const handleDeleteEntry = async () => {
   if (!currentEntry.value) return
 
-  try {
-    await ElMessageBox.confirm('确定要删除这条字幕吗？', '确认删除', {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
+  const currentId = currentEntry.value.id
+  const currentIndex = subtitleStore.entries.findIndex((e) => e.id === currentId)
 
-    const currentId = currentEntry.value.id
-    const currentIndex = subtitleStore.entries.findIndex((e) => e.id === currentId)
+  subtitleStore.deleteEntry(currentId)
 
-    subtitleStore.deleteEntry(currentId)
-    ElMessage.success('已删除字幕')
-
-    // 选中下一条或上一条字幕
-    if (subtitleStore.entries.length > 0) {
-      const nextEntry = subtitleStore.entries[currentIndex] || subtitleStore.entries[currentIndex - 1]
-      if (nextEntry) {
-        selectedEntryId.value = nextEntry.id
-      }
-    } else {
-      selectedEntryId.value = null
+  // 选中下一条或上一条字幕
+  if (subtitleStore.entries.length > 0) {
+    const nextEntry = subtitleStore.entries[currentIndex] || subtitleStore.entries[currentIndex - 1]
+    if (nextEntry) {
+      selectedEntryId.value = nextEntry.id
     }
-  } catch {
-    // 用户取消
+  } else {
+    selectedEntryId.value = null
   }
 }
 
@@ -471,7 +434,6 @@ const handleRemoveHTML = () => {
   if (currentEntry.value) {
     editingText.value = currentEntry.value.text
   }
-  ElMessage.success('已移除所有 HTML 标签')
 }
 
 // 处理波形点击跳转
@@ -495,7 +457,7 @@ const handleSubtitleUpdate = (id: number, startTime: TimeStamp, endTime: TimeSta
   // 自动保存
   if (subtitleStore.currentFilePath) {
     subtitleStore.saveToFile().catch((error) => {
-      ElMessage.error(`保存失败: ${error}`)
+      // 保存失败，静默处理
     })
   }
 }
@@ -519,18 +481,6 @@ const handleZoomOut = () => {
 
 // 返回欢迎页
 const goBack = async () => {
-  if (subtitleStore.hasUnsavedChanges) {
-    try {
-      await ElMessageBox.confirm('有未保存的更改，确定要离开吗？', '确认', {
-        confirmButtonText: '离开',
-        cancelButtonText: '取消',
-        type: 'warning',
-      })
-    } catch {
-      return
-    }
-  }
-
   router.push('/')
 }
 

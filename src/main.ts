@@ -9,7 +9,6 @@ import './assets/main.css'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
-import { ElMessage } from 'element-plus'
 
 if (process.env.NODE_ENV === 'development') {
   devtools.connect('http://localhost', 8098)
@@ -44,7 +43,6 @@ const globalOpenFile = async () => {
       const store = useSubtitleStore()
       const srtFile = await invoke('read_srt', { filePath: selected })
       await store.loadSRTFile(srtFile)
-      ElMessage.success({ message: 'SRT 文件加载成功', duration: 300 })
 
       // 如果当前不在编辑器页面，导航到编辑器
       if (router.currentRoute.value.path !== '/editor') {
@@ -52,7 +50,7 @@ const globalOpenFile = async () => {
       }
     }
   } catch (error) {
-    ElMessage.error(`加载失败: ${error}`)
+    // 加载失败，静默处理
   }
 }
 
@@ -62,13 +60,11 @@ const globalSaveFile = async () => {
     const { useSubtitleStore } = await import('./stores/subtitle')
     const store = useSubtitleStore()
     if (!store.currentFilePath) {
-      ElMessage.warning('没有可保存的文件')
       return
     }
     await store.saveToFile()
-    ElMessage.success('保存成功')
   } catch (error) {
-    ElMessage.error(`保存失败: ${error}`)
+    // 保存失败，静默处理
   }
 }
 
