@@ -1,8 +1,10 @@
 mod srt_parser;
+mod waveform_generator;
 
 use srt_parser::{read_srt_file, write_srt_file, SRTFile, SubtitleEntry};
+use waveform_generator::generate_waveform;
 use std::fs;
-use tauri::menu::{MenuBuilder, SubmenuBuilder, MenuItem};
+use tauri::menu::{MenuBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -33,6 +35,15 @@ fn read_audio_file(file_path: String) -> Result<String, String> {
     // Convert to base64
     let base64_data = base64_encode(&file_data);
     Ok(base64_data)
+}
+
+/// Generate waveform data from an audio file
+/// Returns a vector of normalized amplitude values (0.0 to 1.0)
+/// target_samples: number of data points to generate (default: 2000)
+#[tauri::command]
+fn generate_audio_waveform(file_path: String, target_samples: Option<usize>) -> Result<Vec<f32>, String> {
+    let samples = target_samples.unwrap_or(2000);
+    generate_waveform(&file_path, samples)
 }
 
 /// 触发前端打开文件事件
@@ -189,7 +200,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_prevent_default::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![greet, read_srt, write_srt, read_audio_file, trigger_open_file])
+        .invoke_handler(tauri::generate_handler![greet, read_srt, write_srt, read_audio_file, generate_audio_waveform, trigger_open_file])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -41,6 +41,9 @@ importers:
       vue-router:
         specifier: ^4.6.3
         version: 4.6.3(vue@3.5.23(typescript@5.9.3))
+      wavesurfer.js:
+        specifier: ^7.11.1
+        version: 7.11.1
     devDependencies:
       '@egoist/tailwindcss-icons':
         specifier: ^1.9.0
@@ -3210,6 +3213,9 @@ packages:
     peerDependenciesMeta:
       typescript:
         optional: true
+
+  wavesurfer.js@7.11.1:
+    resolution: {integrity: sha512-8Q+wwItpjJAlhQ7crQLtKwgfbqqczm5/wx+76K4PptP+MBAjB0OA78+A9OuLnULz/8GpAQ+fKM6s81DonEO0Sg==, tarball: https://registry.npmmirror.com/wavesurfer.js/-/wavesurfer.js-7.11.1.tgz}
 
   webpack-virtual-modules@0.6.2:
     resolution: {integrity: sha512-66/V2i5hQanC51vBQKPH4aI8NMAcBW59FVBs+rC7eGHupMyfn34q7rZIE+ETlJ+XTevqfUhVVBgSUNSW2flEUQ==}
@@ -6505,6 +6511,8 @@ snapshots:
       '@vue/shared': 3.5.23
     optionalDependencies:
       typescript: 5.9.3
+
+  wavesurfer.js@7.11.1: {}
 
   webpack-virtual-modules@0.6.2: {}
 

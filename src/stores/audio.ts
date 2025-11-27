@@ -40,6 +40,9 @@ export const useAudioStore = defineStore('audio', () => {
         // 调用 Tauri 后端读取文件为 base64，避免路径编码问题
         const fileBase64 = await invoke<string>('read_audio_file', { filePath: file.path })
 
+        // 同时生成波形数据
+        generateWaveform(file.path)
+
         // 将 base64 转换为 Blob
         const binaryString = atob(fileBase64)
         const bytes = new Uint8Array(binaryString.length)
@@ -209,6 +212,27 @@ export const useAudioStore = defineStore('audio', () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
+  // 生成波形数据
+  const generateWaveform = async (filePath: string) => {
+    try {
+      console.log('🎵 Generating waveform for:', filePath)
+      const waveform = await invoke<number[]>('generate_audio_waveform', {
+        filePath,
+        targetSamples: 2000
+      })
+
+      if (audioFile.value) {
+        audioFile.value.waveform = waveform
+        console.log('✅ Waveform generated successfully!')
+        console.log('📊 Data points:', waveform.length)
+        console.log('📈 Sample values:', waveform.slice(0, 10))
+      }
+    } catch (error) {
+      console.error('❌ Failed to generate waveform:', error)
+      // 不阻塞音频加载，即使波形生成失败
+    }
+  }
+
   // 当前音频文件的引用（为了兼容性）
   const currentAudio = computed(() => audioFile.value)
 
@@ -234,5 +258,6 @@ export const useAudioStore = defineStore('audio', () => {
     setPlaybackRate,
     cleanup,
     formatTime,
+    generateWaveform,
   }
 })

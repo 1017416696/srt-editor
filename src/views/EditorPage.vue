@@ -10,6 +10,7 @@ import { useAudioStore } from '@/stores/audio'
 import { useConfigStore } from '@/stores/config'
 import { timeStampToMs } from '@/utils/time'
 import type { SRTFile, AudioFile } from '@/types/subtitle'
+import WaveformViewer from '@/components/WaveformViewer.vue'
 
 // Debounce helper function
 function debounce<T extends (...args: any[]) => any>(func: T, wait: number) {
@@ -472,6 +473,11 @@ const handleRemoveHTML = () => {
   ElMessage.success('已移除所有 HTML 标签')
 }
 
+// 处理波形点击跳转
+const handleWaveformSeek = (time: number) => {
+  audioStore.seek(time)
+}
+
 // 返回欢迎页
 const goBack = async () => {
   if (subtitleStore.hasUnsavedChanges) {
@@ -761,6 +767,18 @@ const handleKeydown = (e: KeyboardEvent) => {
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- 波形显示区 -->
+        <div v-if="hasAudio" class="waveform-section">
+          <WaveformViewer
+            :waveform-data="audioStore.audioFile?.waveform"
+            :current-time="audioStore.playerState.currentTime"
+            :duration="audioStore.playerState.duration"
+            :subtitles="subtitleStore.entries"
+            :height="120"
+            @seek="handleWaveformSeek"
+          />
         </div>
 
         <!-- 字幕编辑区 -->
@@ -1229,6 +1247,12 @@ const handleKeydown = (e: KeyboardEvent) => {
 .speed-buttons {
   display: flex;
   gap: 0.5rem;
+}
+
+.waveform-section {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: white;
 }
 
 .timeline-section {
