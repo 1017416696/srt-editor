@@ -3,7 +3,7 @@
     <!-- 时间轴主区域 -->
     <div class="timeline-container" ref="timelineContainerRef">
       <!-- 波形和字幕轨道 -->
-      <div class="timeline-track-area" ref="trackAreaRef" @scroll="handleScroll">
+      <div class="timeline-track-area" ref="trackAreaRef" @scroll="handleScroll" @wheel="handleWheel">
         <div class="timeline-content" :style="{ width: timelineWidth + 'px' }" @click="handleTimelineClick">
           <!-- 时间刻度尺 -->
           <div class="time-ruler" :style="{ width: timelineWidth + 'px' }">
@@ -180,17 +180,29 @@ const getSubtitleStyle = (subtitle: SubtitleEntry) => {
   }
 }
 
-// Zoom controls
+// Zoom controls - zoom centered on playhead
 const zoomIn = () => {
   zoomLevel.value = Math.min(zoomLevel.value * 1.5, 10)
   nextTick(() => {
-    // 保持当前时间在视图中
-    scrollToTime(props.currentTime)
+    // 以播放指针为中心进行缩放
+    if (trackAreaRef.value) {
+      const newPlayheadPixel = timeToPixel(props.currentTime)
+      const containerWidth = trackAreaRef.value.clientWidth
+      trackAreaRef.value.scrollLeft = newPlayheadPixel - containerWidth / 2
+    }
   })
 }
 
 const zoomOut = () => {
   zoomLevel.value = Math.max(zoomLevel.value / 1.5, 0.1)
+  nextTick(() => {
+    // 以播放指针为中心进行缩放
+    if (trackAreaRef.value) {
+      const newPlayheadPixel = timeToPixel(props.currentTime)
+      const containerWidth = trackAreaRef.value.clientWidth
+      trackAreaRef.value.scrollLeft = newPlayheadPixel - containerWidth / 2
+    }
+  })
 }
 
 // Scroll to specific time
@@ -232,6 +244,55 @@ const handleTimelineClick = (event: MouseEvent) => {
 
   // 发送 seek 事件
   emit('seek', clampedTime)
+}
+
+// Handle wheel zoom (mouse wheel or trackpad)
+const handleWheel = (event: WheelEvent) => {
+  // 检查是否是垂直滚动（缩放）或水平滚动（导航）
+  // 如果 deltaY 的绝对值大于 deltaX，认为是垂直滚动（缩放）
+  const isVerticalScroll = Math.abs(event.deltaY) > Math.abs(event.deltaX)
+
+  // 如果是水平滚动，允许默认行为
+  if (!isVerticalScroll) {
+    return
+  }
+
+  event.preventDefault()
+
+  // deltaY > 0 表示向下滚动（缩小），deltaY < 0 表示向上滚动（放大）
+  // 对于触控板，deltaY 可能很大，所以需要归一化
+  const isZoomingIn = event.deltaY < 0
+
+  // 根据 deltaY 的大小调整缩放因子
+  let zoomFactor = 1.0
+  const absDelta = Math.abs(event.deltaY)
+  if (absDelta > 0) {
+    if (isZoomingIn) {
+      zoomFactor = 1 + (Math.min(absDelta, 100) / 100) * 0.2
+    } else {
+      zoomFactor = 1 - (Math.min(absDelta, 100) / 100) * 0.2
+    }
+  }
+
+  // 计算新的缩放级别
+  const newZoomLevel = Math.max(0.1, Math.min(zoomLevel.value * zoomFactor, 10))
+
+  // 以当前播放位置（红线）为基准进行缩放
+  if (!trackAreaRef.value) return
+
+  // 获取当前播放时间对应的像素位置
+  const playheadPixel = timeToPixel(props.currentTime)
+
+  // 更新缩放级别
+  zoomLevel.value = newZoomLevel
+
+  // 重新计算缩放后播放指针应在的像素位置，使其保持在视图中央
+  nextTick(() => {
+    const newPlayheadPixel = timeToPixel(props.currentTime)
+    const containerWidth = trackAreaRef.value?.clientWidth || 0
+    // 将播放指针保持在视图的中央位置
+    trackAreaRef.value!.scrollLeft = newPlayheadPixel - containerWidth / 2
+  })
 }
 
 // Subtitle dragging
