@@ -9,7 +9,7 @@ import { useSubtitleStore } from '@/stores/subtitle'
 import { useAudioStore } from '@/stores/audio'
 import { useConfigStore } from '@/stores/config'
 import { timeStampToMs } from '@/utils/time'
-import type { SRTFile, AudioFile } from '@/types/subtitle'
+import type { SRTFile, AudioFile, TimeStamp } from '@/types/subtitle'
 import WaveformViewer from '@/components/WaveformViewer.vue'
 
 // Debounce helper function
@@ -149,7 +149,7 @@ const replaceOne = async () => {
       if (currentIndex !== -1 && currentIndex < subtitleStore.searchResults.length - 1) {
         // 还有下一个，自动跳到下一个
         const nextId = subtitleStore.searchResults[currentIndex + 1]
-        selectedEntryId.value = nextId
+        selectedEntryId.value = nextId ?? null
       } else if (currentIndex === subtitleStore.searchResults.length - 1) {
         // 已经是最后一个，提示
         ElMessage.success('已替换，没有更多结果了')
@@ -478,6 +478,44 @@ const handleWaveformSeek = (time: number) => {
   audioStore.seek(time)
 }
 
+// 处理字幕时间更新（从波形 Region 拖拽）
+const handleSubtitleUpdate = (id: number, startTime: TimeStamp, endTime: TimeStamp) => {
+  console.log(`📝 Updating subtitle #${id} from waveform:`, { startTime, endTime })
+
+  const entry = subtitleStore.entries.find((e) => e.id === id)
+  if (!entry) {
+    console.warn(`⚠️ Subtitle #${id} not found`)
+    return
+  }
+
+  // 更新字幕时间
+  subtitleStore.updateEntryTime(id, startTime, endTime)
+
+  // 自动保存
+  if (subtitleStore.currentFilePath) {
+    subtitleStore.saveToFile().catch((error) => {
+      ElMessage.error(`保存失败: ${error}`)
+    })
+  }
+}
+
+// WaveformViewer ref
+const waveformViewerRef = ref<InstanceType<typeof WaveformViewer> | null>(null)
+
+// 计算当前缩放百分比
+const waveformZoomLevel = computed(() => {
+  return waveformViewerRef.value ? Math.round(waveformViewerRef.value.zoomLevel * 100) : 100
+})
+
+// 缩放控制
+const handleZoomIn = () => {
+  waveformViewerRef.value?.zoomIn()
+}
+
+const handleZoomOut = () => {
+  waveformViewerRef.value?.zoomOut()
+}
+
 // 返回欢迎页
 const goBack = async () => {
   if (subtitleStore.hasUnsavedChanges) {
@@ -580,23 +618,90 @@ const handleKeydown = (e: KeyboardEvent) => {
 
 <template>
   <div class="editor-page">
-    <!-- 顶部工具栏 -->
-    <div class="toolbar">
-      <div class="toolbar-left">
-        <span class="app-title">SRT 编辑工具</span>
-        <span v-if="subtitleStore.currentFilePath" class="file-name">
-          {{ subtitleStore.currentFilePath.split('/').pop() }}
-        </span>
+    <!-- 时间轴区域：顶部全宽 -->
+    <div v-if="hasAudio" class="timeline-section">
+      <!-- 一体化控制栏：音频名称 + 缩放 + 播放 + 时长 + 音量 + 速度 -->
+      <div class="timeline-unified-controls">
+        <!-- 左侧组 -->
+        <div class="controls-left">
+          <span class="audio-name-compact">{{ audioStore.currentAudio?.name }}</span>
+          <el-button text size="small" type="danger" @click="handleRemoveAudio">删除</el-button>
+
+          <div class="divider"></div>
+
+          <!-- 缩放控制 -->
+          <span class="control-label-mini">缩放</span>
+          <el-button size="small" @click="handleZoomOut" class="zoom-btn">−</el-button>
+          <span class="zoom-display">{{ waveformZoomLevel }}%</span>
+          <el-button size="small" @click="handleZoomIn" class="zoom-btn">+</el-button>
+        </div>
+
+        <!-- 中间播放控制（居中）-->
+        <div class="controls-center">
+          <span class="time-display-mini">{{ audioStore.formatTime(audioStore.playerState.currentTime) }}</span>
+          <el-button
+            circle
+            size="small"
+            type="primary"
+            @click="audioStore.togglePlay()"
+            class="play-button-mini"
+          >
+            {{ audioStore.playerState.isPlaying ? '⏸' : '▶' }}
+          </el-button>
+          <span class="time-display-mini">{{ audioStore.formatTime(audioStore.playerState.duration) }}</span>
+        </div>
+
+        <!-- 右侧组 -->
+        <div class="controls-right">
+          <!-- 音量控制 -->
+          <span class="control-label-mini">音量</span>
+          <el-slider
+            v-model="audioStore.playerState.volume"
+            :max="1"
+            :step="0.01"
+            :show-tooltip="false"
+            class="volume-slider-mini"
+            @input="(val: number) => audioStore.setVolume(val)"
+          />
+          <span class="param-value-mini">{{ Math.round(audioStore.playerState.volume * 100) }}%</span>
+
+          <div class="divider"></div>
+
+          <!-- 速度控制 -->
+          <span class="control-label-mini">速度</span>
+          <el-button
+            v-for="rate in [0.5, 1, 1.5, 2]"
+            :key="rate"
+            :type="audioStore.playerState.playbackRate === rate ? 'primary' : 'default'"
+            size="small"
+            @click="audioStore.setPlaybackRate(rate)"
+            class="speed-btn-mini"
+          >
+            {{ rate }}x
+          </el-button>
+        </div>
       </div>
 
-      <div class="toolbar-right">
-        <el-button type="primary" :disabled="!hasContent" @click="handleSave">
-          保存
-        </el-button>
-      </div>
+      <!-- 波形和字幕轨道 -->
+      <WaveformViewer
+        ref="waveformViewerRef"
+        :waveform-data="audioStore.audioFile?.waveform"
+        :current-time="audioStore.playerState.currentTime"
+        :duration="audioStore.playerState.duration"
+        :subtitles="subtitleStore.entries"
+        :current-subtitle-id="selectedEntryId"
+        @seek="handleWaveformSeek"
+        @update-subtitle="handleSubtitleUpdate"
+      />
     </div>
 
-    <!-- 主内容区 -->
+    <!-- 音频加载占位符 -->
+    <div v-else class="timeline-placeholder">
+      <span class="text-gray-500">未加载音频</span>
+      <el-button size="small" @click="handleOpenAudio">加载音频</el-button>
+    </div>
+
+    <!-- 主内容区：左右分栏 -->
     <div class="content-area">
       <!-- 左侧：字幕列表 -->
       <div class="subtitle-list-panel">
@@ -686,96 +791,22 @@ const handleKeydown = (e: KeyboardEvent) => {
           </div>
         </div>
 
-        <!-- 底部统计 -->
+        <!-- 底部统计:字幕文件名 + 字幕数量 -->
         <div class="list-footer">
-          <span v-if="searchText">
-            {{ filteredEntries.length }}/{{ subtitleStore.entries.length }} 字幕
+          <span class="file-info">
+            {{ subtitleStore.currentFilePath ? subtitleStore.currentFilePath.split('/').pop()?.replace('.srt', '') : '豆包输入法' }}.srt
           </span>
-          <span v-else>
-            {{ subtitleStore.entries.length }}/{{ subtitleStore.entries.length }} 字幕
+          <span v-if="selectedEntryId" class="count-info">
+            {{ selectedEntryId }}/{{ subtitleStore.entries.length }} 字幕
+          </span>
+          <span v-else class="count-info">
+            0/{{ subtitleStore.entries.length }} 字幕
           </span>
         </div>
       </div>
 
-      <!-- 右侧：编辑区域 -->
-      <div class="edit-panel">
-        <!-- 音频控制区 -->
-        <div class="audio-section">
-          <div v-if="!hasAudio" class="audio-placeholder">
-            <span class="text-gray-500">未加载音频</span>
-            <el-button size="small" @click="handleOpenAudio">加载音频</el-button>
-          </div>
-
-          <div v-else class="audio-controls">
-            <div class="audio-header">
-              <span class="audio-name">{{ audioStore.currentAudio?.name }}</span>
-              <el-button text size="small" type="danger" @click="handleRemoveAudio">删除</el-button>
-            </div>
-
-            <!-- 集成波形的播放控制区 -->
-            <div class="waveform-player-container">
-              <!-- 波形显示 -->
-              <WaveformViewer
-                :waveform-data="audioStore.audioFile?.waveform"
-                :current-time="audioStore.playerState.currentTime"
-                :duration="audioStore.playerState.duration"
-                :subtitles="subtitleStore.entries"
-                :height="120"
-                @seek="handleWaveformSeek"
-              />
-
-              <!-- 播放控制和时间显示 -->
-              <div class="waveform-controls-bar">
-                <span class="current-time">{{ audioStore.formatTime(audioStore.playerState.currentTime) }}</span>
-
-                <el-button
-                  circle
-                  type="primary"
-                  @click="audioStore.togglePlay()"
-                  class="play-button-center"
-                >
-                  {{ audioStore.playerState.isPlaying ? '⏸' : '▶' }}
-                </el-button>
-
-                <span class="duration-time">{{ audioStore.formatTime(audioStore.playerState.duration) }}</span>
-              </div>
-            </div>
-
-            <!-- 音量和速度控制 -->
-            <div class="audio-controls-footer">
-              <div class="volume-section">
-                <span class="control-label">音量</span>
-                <div class="volume-control">
-                  <el-slider
-                    v-model="audioStore.playerState.volume"
-                    :max="1"
-                    :step="0.01"
-                    :show-tooltip="false"
-                    class="volume-slider"
-                    @input="(val: number) => audioStore.setVolume(val)"
-                  />
-                  <span class="volume-percentage">{{ Math.round(audioStore.playerState.volume * 100) }}%</span>
-                </div>
-              </div>
-
-              <div class="playback-rate-section">
-                <span class="control-label">速度</span>
-                <div class="speed-buttons">
-                  <el-button
-                    v-for="rate in [0.5, 1, 1.5, 2]"
-                    :key="rate"
-                    :type="audioStore.playerState.playbackRate === rate ? 'primary' : 'default'"
-                    size="small"
-                    @click="audioStore.setPlaybackRate(rate)"
-                  >
-                    {{ rate }}x
-                  </el-button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
+      <!-- 右侧：字幕编辑区 -->
+      <div class="subtitle-edit-panel">
         <!-- 字幕编辑区 -->
         <div v-if="currentEntry" class="subtitle-edit-section">
           <div class="edit-header">
@@ -857,36 +888,137 @@ const handleKeydown = (e: KeyboardEvent) => {
   background-color: #f5f5f5;
 }
 
-/* 工具栏 */
-.toolbar {
+/* 时间轴区域 */
+.timeline-section {
+  width: 100%;
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.timeline-placeholder {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1.5rem;
-  background: white;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  background: #f9fafb;
   border-bottom: 1px solid #e5e7eb;
 }
 
-.toolbar-left {
+/* 一体化控制栏：三栏布局（左、中、右）*/
+.timeline-unified-controls {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background: #fafafa;
+  border-bottom: 1px solid #e5e7eb;
+  gap: 1rem;
+  font-size: 0.813rem;
+}
+
+.controls-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: flex-start;
+}
+
+.controls-left > :nth-child(4) {
+  margin-left: 2rem;
+}
+
+.controls-center {
   display: flex;
   align-items: center;
   gap: 1rem;
+  justify-content: center;
 }
 
-.app-title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: #333;
-}
-
-.file-name {
-  color: #666;
-  font-size: 0.9rem;
-}
-
-.toolbar-right {
+.controls-right {
   display: flex;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+/* 分隔线 */
+.divider {
+  width: 1px;
+  height: 20px;
+  background: #d1d5db;
+  margin: 0 0.25rem;
+}
+
+/* 音频名称 */
+.audio-name-compact {
+  font-size: 0.813rem;
+  font-weight: 500;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+/* 控制标签 */
+.control-label-mini {
+  font-size: 0.75rem;
+  color: #666;
+  white-space: nowrap;
+  margin-right: 0.25rem;
+}
+
+/* 缩放按钮 */
+.zoom-btn {
+  min-width: 32px;
+  height: 28px;
+  padding: 0 0.5rem;
+}
+
+.zoom-display {
+  font-size: 0.75rem;
+  color: #666;
+  min-width: 45px;
+  text-align: center;
+}
+
+/* 时间显示 */
+.time-display-mini {
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-weight: 500;
+  min-width: 42px;
+}
+
+/* 播放按钮 */
+.play-button-mini {
+  font-size: 0.85rem;
+  width: 32px;
+  height: 32px;
+}
+
+/* 音量滑块 */
+.volume-slider-mini {
+  width: 100px;
+}
+
+.param-value-mini {
+  font-size: 0.75rem;
+  color: #999;
+  min-width: 35px;
+  text-align: right;
+}
+
+/* 速度按钮 */
+.speed-btn-mini {
+  min-width: 45px;
+  height: 28px;
+  font-size: 0.75rem;
 }
 
 /* 主内容区 */
@@ -1112,12 +1244,32 @@ const handleKeydown = (e: KeyboardEvent) => {
 }
 
 .list-footer {
-  padding: 0.75rem 1rem;
+  padding: 0.6rem 1rem;
   border-top: 1px solid #e5e7eb;
   background: #f9fafb;
-  text-align: center;
-  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.75rem;
   color: #6b7280;
+  gap: 1rem;
+}
+
+.file-info {
+  color: #333;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+
+.count-info {
+  color: #6b7280;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .empty-state {
@@ -1129,8 +1281,8 @@ const handleKeydown = (e: KeyboardEvent) => {
   gap: 1rem;
 }
 
-/* 右侧编辑区 */
-.edit-panel {
+/* 右侧字幕编辑区 */
+.subtitle-edit-panel {
   flex: 1;
   background: white;
   overflow-y: auto;
@@ -1138,165 +1290,14 @@ const handleKeydown = (e: KeyboardEvent) => {
   flex-direction: column;
 }
 
-.audio-section {
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.audio-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem;
-  background: #f9fafb;
-  border-radius: 0.5rem;
-}
-
-.audio-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.audio-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.5rem;
-}
-
 .audio-name {
-  font-size: 0.95rem;
+  font-size: 0.875rem;
   font-weight: 500;
   color: #333;
-}
-
-/* 波形播放器容器 */
-.waveform-player-container {
-  position: relative;
-  width: 100%;
-  margin-bottom: 1rem;
-}
-
-/* 播放控制栏 */
-.waveform-controls-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 1rem;
-  padding: 0 1rem;
-}
-
-/* 播放按钮 */
-.play-button-center {
-  font-size: 1.1rem;
-  width: 44px;
-  height: 44px;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
-  transition: all 0.2s ease;
-}
-
-.play-button-center:hover {
-  transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-}
-
-.play-button-center:active {
-  transform: scale(0.95);
-}
-
-/* 时间显示 */
-.current-time,
-.duration-time {
-  font-size: 0.875rem;
-  color: #6b7280;
-  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
-  font-weight: 500;
-  min-width: 45px;
-}
-
-/* 音量和速度控制 */
-.audio-controls-footer {
-  display: grid;
-  grid-template-columns: 1.5fr 1fr;
-  gap: 1.5rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid #e5e7eb;
-}
-
-.volume-section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.playback-rate-section {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.control-label {
-  font-size: 0.9rem;
-  color: #333;
-  font-weight: 500;
-}
-
-.volume-control {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.volume-slider {
-  flex: 1;
-  min-width: 0;
-}
-
-.volume-percentage {
-  font-size: 0.85rem;
-  color: #999;
-  min-width: 35px;
-  text-align: right;
-}
-
-.speed-buttons {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.timeline-section {
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.timeline-bar {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.time-label {
-  font-size: 0.875rem;
-  color: #6b7280;
-  font-family: monospace;
-  min-width: 50px;
-  text-align: center;
-}
-
-.timeline-progress {
-  flex: 1;
-  height: 4px;
-  background: #e5e7eb;
-  border-radius: 2px;
-  position: relative;
-}
-
-.progress-bar-bg {
-  height: 100%;
-  background: #3b82f6;
-  border-radius: 2px;
-  width: 0%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
 }
 
 .subtitle-edit-section {
