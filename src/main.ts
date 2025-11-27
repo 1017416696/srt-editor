@@ -44,7 +44,7 @@ const globalOpenFile = async () => {
       const store = useSubtitleStore()
       const srtFile = await invoke('read_srt', { filePath: selected })
       await store.loadSRTFile(srtFile)
-      ElMessage.success('SRT 文件加载成功')
+      ElMessage.success({ message: 'SRT 文件加载成功', duration: 300 })
 
       // 如果当前不在编辑器页面，导航到编辑器
       if (router.currentRoute.value.path !== '/editor') {
@@ -72,9 +72,9 @@ const globalSaveFile = async () => {
   }
 }
 
-// 将全局函数暴露到 window 对象
-;(window as any).__globalOpenFile = globalOpenFile
-;(window as any).__globalSaveFile = globalSaveFile
+  // 将全局函数暴露到 window 对象
+  ; (window as any).__globalOpenFile = globalOpenFile
+  ; (window as any).__globalSaveFile = globalSaveFile
 
 // 全局菜单事件监听器（在应用启动时注册）
 listen<void>('menu:open-file', async () => {
@@ -82,14 +82,14 @@ listen<void>('menu:open-file', async () => {
   if ((window as any).__handleMenuOpenFile && typeof (window as any).__handleMenuOpenFile === 'function') {
     await (window as any).__handleMenuOpenFile()
   }
-}).catch(() => {})
+}).catch(() => { })
 
 listen<void>('menu:save', async () => {
   // 触发全局回调函数（由各页面注册）
   if ((window as any).__handleMenuSave && typeof (window as any).__handleMenuSave === 'function') {
     await (window as any).__handleMenuSave()
   }
-}).catch(() => {})
+}).catch(() => { })
 
 // 全局键盘快捷键监听（仅处理打开文件，保存由 EditorPage 组件处理）
 document.addEventListener('keydown', (e: KeyboardEvent) => {
@@ -98,7 +98,7 @@ document.addEventListener('keydown', (e: KeyboardEvent) => {
   // 检查 Cmd+O (macOS) 或 Ctrl+O (Windows/Linux)
   // 仅在编辑器页面未加载时使用这个全局快捷键
   if ((isMac && e.metaKey && e.key.toLowerCase() === 'o') ||
-      (!isMac && e.ctrlKey && e.key.toLowerCase() === 'o')) {
+    (!isMac && e.ctrlKey && e.key.toLowerCase() === 'o')) {
     // 如果编辑器页面已注册自己的快捷键处理，就不必理会这个
     // 这是备用方案
   }

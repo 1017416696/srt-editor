@@ -289,7 +289,7 @@ const handleOpenFile = async () => {
     if (selected) {
       const srtFile = await invoke<SRTFile>('read_srt', { filePath: selected })
       await subtitleStore.loadSRTFile(srtFile)
-      ElMessage.success('SRT 文件加载成功')
+      ElMessage.success({ message: 'SRT 文件加载成功', duration: 300 })
 
       // 选中第一条字幕
       if (subtitleStore.entries.length > 0) {

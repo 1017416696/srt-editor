@@ -68,7 +68,7 @@ const openSRTFile = async () => {
       // 调用 Tauri 后端读取 SRT 文件
       const srtFile = await invoke<SRTFile>('read_srt', { filePath: selected })
       await subtitleStore.loadSRTFile(srtFile)
-      ElMessage.success('SRT 文件加载成功')
+      ElMessage.success({ message: 'SRT 文件加载成功', duration: 300 })
       isLoading.value = false
 
       // 加载成功后直接进入编辑器
