@@ -470,13 +470,26 @@ const waveformZoomLevel = computed(() => {
   return waveformViewerRef.value ? Math.round(waveformViewerRef.value.zoomLevel * 100) : 100
 })
 
+// 判断缩放按钮是否禁用
+const canZoomIn = computed(() => {
+  return waveformViewerRef.value ? waveformViewerRef.value.zoomLevel < 1.0 : false
+})
+
+const canZoomOut = computed(() => {
+  return waveformViewerRef.value ? waveformViewerRef.value.zoomLevel > 0.5 : false
+})
+
 // 缩放控制
 const handleZoomIn = () => {
-  waveformViewerRef.value?.zoomIn()
+  if (canZoomIn.value) {
+    waveformViewerRef.value?.zoomIn()
+  }
 }
 
 const handleZoomOut = () => {
-  waveformViewerRef.value?.zoomOut()
+  if (canZoomOut.value) {
+    waveformViewerRef.value?.zoomOut()
+  }
 }
 
 // 返回欢迎页
@@ -606,9 +619,9 @@ const handleKeydown = (e: KeyboardEvent) => {
 
           <!-- 缩放控制 -->
           <span class="control-label-mini">缩放</span>
-          <el-button size="small" @click="handleZoomOut" class="zoom-btn">−</el-button>
+          <el-button size="small" @click="handleZoomOut" class="zoom-btn" :disabled="!canZoomOut">−</el-button>
           <span class="zoom-display">{{ waveformZoomLevel }}%</span>
-          <el-button size="small" @click="handleZoomIn" class="zoom-btn">+</el-button>
+          <el-button size="small" @click="handleZoomIn" class="zoom-btn" :disabled="!canZoomIn">+</el-button>
         </div>
 
         <!-- 中间播放控制（居中）-->

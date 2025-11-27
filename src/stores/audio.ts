@@ -255,9 +255,13 @@ export const useAudioStore = defineStore('audio', () => {
     }
     
     try {
+      // 使用固定的高密度数据点，确保任何缩放级别下都有足够的密度
+      // 20000 个数据点对于大多数音频足够了
+      const targetSamples = 20000
+      
       const waveform = await invoke<number[]>('generate_audio_waveform', {
         filePath,
-        targetSamples: 2000
+        targetSamples
       })
       
       if (audioFile.value && waveform) {

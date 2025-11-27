@@ -118,6 +118,7 @@ const trackAreaRef = ref<HTMLDivElement | null>(null)
 const waveformRef = ref<HTMLDivElement | null>(null)
 const wavesurfer = ref<WaveSurfer | null>(null)
 const loading = ref(false)
+const waveformRebuildTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 
 // Timeline state
 const zoomLevel = ref(1) // 缩放级别：1 = 1秒占用 100px
@@ -189,16 +190,24 @@ const getSubtitleStyle = (subtitle: SubtitleEntry) => {
   const hue = (subtitle.id * 137.5) % 360
   const color = `hsl(${hue}, 70%, 65%)`
 
+  // 根据缩放级别动态调整最小宽度
+  // 缩放越小，最小宽度也越小，避免字幕块过长挤占空间
+  const minWidth = Math.max(10, Math.round(20 * zoomLevel.value))
+
   return {
     left: left + 'px',
-    width: Math.max(width, 50) + 'px', // 最小宽度 50px
+    width: Math.max(width, minWidth) + 'px',
     backgroundColor: color
   }
 }
 
 // Zoom controls - zoom centered on playhead
+// 缩放范围限制：最小 50%（0.5），最大 100%（1.0）
+const MIN_ZOOM = 0.5
+const MAX_ZOOM = 1.0
+
 const zoomIn = () => {
-  zoomLevel.value = Math.min(zoomLevel.value * 1.5, 10)
+  zoomLevel.value = Math.min(zoomLevel.value * 1.5, MAX_ZOOM)
   nextTick(() => {
     // 以播放指针为中心进行缩放
     if (trackAreaRef.value) {
@@ -210,7 +219,7 @@ const zoomIn = () => {
 }
 
 const zoomOut = () => {
-  zoomLevel.value = Math.max(zoomLevel.value / 1.5, 0.1)
+  zoomLevel.value = Math.max(zoomLevel.value / 1.5, MIN_ZOOM)
   nextTick(() => {
     // 以播放指针为中心进行缩放
     if (trackAreaRef.value) {
@@ -290,8 +299,8 @@ const handleWheel = (event: WheelEvent) => {
     }
   }
 
-  // 计算新的缩放级别
-  const newZoomLevel = Math.max(0.1, Math.min(zoomLevel.value * zoomFactor, 10))
+  // 计算新的缩放级别（限制在 MIN_ZOOM 到 MAX_ZOOM 之间）
+  const newZoomLevel = Math.max(MIN_ZOOM, Math.min(zoomLevel.value * zoomFactor, MAX_ZOOM))
 
   // 以当前播放位置（红线）为基准进行缩放
   if (!trackAreaRef.value) return
@@ -386,9 +395,31 @@ const handleResizeEnd = () => {
   document.removeEventListener('mouseup', handleResizeEnd)
 }
 
+// 根据缩放级别计算 barWidth 和 barGap
+const getWaveformParams = () => {
+  // 缩放范围：50% - 100%
+  // 在这个范围内，使用标准参数即可
+  
+  if (zoomLevel.value <= 0.7) {
+    // 50%-70%：标准宽度带小间隙
+    return { barWidth: 2, barGap: 1 }
+  } else {
+    // 70%-100%：标准宽度无间隙，保持连贯
+    return { barWidth: 2, barGap: 0 }
+  }
+}
+
 // Initialize WaveSurfer
 const initWaveSurfer = () => {
   if (!waveformRef.value) return
+
+  // 销毁旧实例
+  if (wavesurfer.value) {
+    wavesurfer.value.destroy()
+    wavesurfer.value = null
+  }
+
+  const { barWidth, barGap } = getWaveformParams()
 
   try {
     wavesurfer.value = WaveSurfer.create({
@@ -396,10 +427,10 @@ const initWaveSurfer = () => {
       waveColor: '#4a9eff',
       progressColor: '#1e40af',
       cursorColor: 'transparent',
-      barWidth: 2,
-      barGap: 1,
-      barRadius: 2,
-      height: 120,
+      barWidth: barWidth,
+      barGap: barGap,
+      barRadius: Math.min(2, barWidth / 2),
+      height: 80, // 减小波形高度，更紧凑
       normalize: true,
       interact: false, // 禁用交互，我们自己处理
     })
@@ -433,13 +464,23 @@ const loadWaveformData = (data: number[]) => {
 
 // Update waveform width when zoom changes
 watch(zoomLevel, () => {
-  if (wavesurfer.value && waveformRef.value) {
+  if (waveformRef.value) {
     // 重新设置容器宽度
     waveformRef.value.style.width = timelineWidth.value + 'px'
-    // WaveSurfer 会自动适应容器宽度
-    nextTick(() => {
-      wavesurfer.value?.drawer?.wrapper?.style && (wavesurfer.value.drawer.wrapper.style.width = '100%')
-    })
+    
+    // 使用防抖：等待用户停止缩放后再重建波形，避免频繁重建
+    if (waveformRebuildTimer.value) {
+      clearTimeout(waveformRebuildTimer.value)
+    }
+    
+    waveformRebuildTimer.value = setTimeout(() => {
+      // 重新创建 WaveSurfer 实例以应用新的 barWidth 参数
+      initWaveSurfer()
+      // 重新加载波形数据
+      if (props.waveformData && props.waveformData.length > 0) {
+        loadWaveformData(props.waveformData)
+      }
+    }, 150) // 150ms 防抖延迟
   }
 })
 
@@ -490,6 +531,9 @@ onMounted(() => {
 onUnmounted(() => {
   if (wavesurfer.value) {
     wavesurfer.value.destroy()
+  }
+  if (waveformRebuildTimer.value) {
+    clearTimeout(waveformRebuildTimer.value)
   }
   document.removeEventListener('mousemove', handleSubtitleDrag)
   document.removeEventListener('mouseup', handleSubtitleDragEnd)
@@ -593,7 +637,7 @@ defineExpose({
 /* 波形层 */
 .waveform-layer {
   width: 100%;
-  height: 120px;
+  height: 80px;
   background: linear-gradient(to bottom, #f8fafc 0%, #f1f5f9 100%);
   position: relative;
   overflow: visible;
