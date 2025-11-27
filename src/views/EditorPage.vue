@@ -712,32 +712,39 @@ const handleKeydown = (e: KeyboardEvent) => {
               <el-button text size="small" type="danger" @click="handleRemoveAudio">删除</el-button>
             </div>
 
-            <div class="audio-player">
-              <el-button
-                circle
-                type="primary"
-                size="large"
-                @click="audioStore.togglePlay()"
-                class="play-button"
-              >
-                {{ audioStore.playerState.isPlaying ? '⏸' : '▶' }}
-              </el-button>
-              <span class="current-time">{{ audioStore.formatTime(audioStore.playerState.currentTime) }}</span>
-              <div class="progress-slider">
-                <el-slider
-                  v-model="audioStore.playerState.currentTime"
-                  :max="audioStore.playerState.duration"
-                  :step="0.1"
-                  :show-tooltip="false"
-                  @input="(val: number) => audioStore.seek(val)"
-                />
+            <!-- 集成波形的播放控制区 -->
+            <div class="waveform-player-container">
+              <!-- 波形显示 -->
+              <WaveformViewer
+                :waveform-data="audioStore.audioFile?.waveform"
+                :current-time="audioStore.playerState.currentTime"
+                :duration="audioStore.playerState.duration"
+                :subtitles="subtitleStore.entries"
+                :height="120"
+                @seek="handleWaveformSeek"
+              />
+
+              <!-- 播放控制和时间显示 -->
+              <div class="waveform-controls-bar">
+                <span class="current-time">{{ audioStore.formatTime(audioStore.playerState.currentTime) }}</span>
+
+                <el-button
+                  circle
+                  type="primary"
+                  @click="audioStore.togglePlay()"
+                  class="play-button-center"
+                >
+                  {{ audioStore.playerState.isPlaying ? '⏸' : '▶' }}
+                </el-button>
+
+                <span class="duration-time">{{ audioStore.formatTime(audioStore.playerState.duration) }}</span>
               </div>
-              <span class="duration-time">{{ audioStore.formatTime(audioStore.playerState.duration) }}</span>
             </div>
 
+            <!-- 音量和速度控制 -->
             <div class="audio-controls-footer">
               <div class="volume-section">
-                <div class="control-label">音量</div>
+                <span class="control-label">音量</span>
                 <div class="volume-control">
                   <el-slider
                     v-model="audioStore.playerState.volume"
@@ -752,7 +759,7 @@ const handleKeydown = (e: KeyboardEvent) => {
               </div>
 
               <div class="playback-rate-section">
-                <div class="control-label">速度</div>
+                <span class="control-label">速度</span>
                 <div class="speed-buttons">
                   <el-button
                     v-for="rate in [0.5, 1, 1.5, 2]"
@@ -767,18 +774,6 @@ const handleKeydown = (e: KeyboardEvent) => {
               </div>
             </div>
           </div>
-        </div>
-
-        <!-- 波形显示区 -->
-        <div v-if="hasAudio" class="waveform-section">
-          <WaveformViewer
-            :waveform-data="audioStore.audioFile?.waveform"
-            :current-time="audioStore.playerState.currentTime"
-            :duration="audioStore.playerState.duration"
-            :subtitles="subtitleStore.entries"
-            :height="120"
-            @seek="handleWaveformSeek"
-          />
         </div>
 
         <!-- 字幕编辑区 -->
@@ -1167,6 +1162,7 @@ const handleKeydown = (e: KeyboardEvent) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 0.5rem;
 }
 
 .audio-name {
@@ -1175,31 +1171,51 @@ const handleKeydown = (e: KeyboardEvent) => {
   color: #333;
 }
 
-.audio-player {
+/* 波形播放器容器 */
+.waveform-player-container {
+  position: relative;
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+/* 播放控制栏 */
+.waveform-controls-bar {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  justify-content: space-between;
+  margin-top: 1rem;
+  padding: 0 1rem;
 }
 
-.play-button {
-  flex-shrink: 0;
-  font-size: 1.2rem;
+/* 播放按钮 */
+.play-button-center {
+  font-size: 1.1rem;
+  width: 44px;
+  height: 44px;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+  transition: all 0.2s ease;
 }
 
+.play-button-center:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.play-button-center:active {
+  transform: scale(0.95);
+}
+
+/* 时间显示 */
 .current-time,
 .duration-time {
-  font-size: 0.8rem;
-  color: #666;
-  font-family: monospace;
-  min-width: 35px;
-  text-align: center;
+  font-size: 0.875rem;
+  color: #6b7280;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-weight: 500;
+  min-width: 45px;
 }
 
-.progress-slider {
-  flex: 1;
-  min-width: 0;
-}
-
+/* 音量和速度控制 */
 .audio-controls-footer {
   display: grid;
   grid-template-columns: 1.5fr 1fr;
@@ -1247,12 +1263,6 @@ const handleKeydown = (e: KeyboardEvent) => {
 .speed-buttons {
   display: flex;
   gap: 0.5rem;
-}
-
-.waveform-section {
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid #e5e7eb;
-  background: white;
 }
 
 .timeline-section {
