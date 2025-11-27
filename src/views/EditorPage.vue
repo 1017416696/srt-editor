@@ -41,6 +41,7 @@ const showReplace = ref(false)
 const selectedEntryId = ref<number | null>(null)
 const editingText = ref('')
 const subtitleListContainer = ref<HTMLElement | null>(null)
+const searchInputRef = ref<InstanceType<typeof HTMLInputElement> | null>(null)
 const subtitleItemRefs: Record<number, HTMLElement | null> = {}
 const isUserEditing = ref(false) // 标记是否是用户在编辑
 const isUserSelectingEntry = ref(false) // 标记用户是否在手动选择字幕
@@ -591,6 +592,14 @@ const handleKeydown = (e: KeyboardEvent) => {
     } else if (shortcuts.open === pressedKey) {
       e.preventDefault()
       handleOpenFile()
+    } else if (shortcuts.find === pressedKey) {
+      // 如果在搜索输入框内按 Cmd+F/Ctrl+F，保持焦点不变
+      e.preventDefault()
+    } else if (e.key === 'Escape') {
+      // 在搜索输入框内按 ESC 时，清除搜索文本并失焦
+      e.preventDefault()
+      searchText.value = ''
+      searchInputRef.value?.blur()
     }
     // 不处理其他快捷键，允许正常输入（包括空格）
     return
@@ -603,6 +612,14 @@ const handleKeydown = (e: KeyboardEvent) => {
   } else if (shortcuts.open === pressedKey) {
     e.preventDefault()
     handleOpenFile()
+  } else if (shortcuts.find === pressedKey) {
+    // Command+F 或 Ctrl+F：聚焦搜索输入框
+    e.preventDefault()
+    if (searchInputRef.value) {
+      nextTick(() => {
+        searchInputRef.value?.focus()
+      })
+    }
   } else if (shortcuts.playPause === pressedKey.toLowerCase()) {
     e.preventDefault()
     audioStore.togglePlay()
@@ -725,6 +742,7 @@ const handleKeydown = (e: KeyboardEvent) => {
               {{ showReplace ? '▼' : '▶' }}
             </button>
             <el-input
+              ref="searchInputRef"
               v-model="searchText"
               placeholder="搜索字幕"
               clearable
