@@ -27,6 +27,7 @@ serde_json = "1"
 tauri-plugin-prevent-default = "4.0"
 base64 = "0.22.1"
 symphonia = { version = "0.5", features = ["mp3", "wav", "aac", "flac", "ogg"] }
+tokio = { version = "1", features = ["rt", "sync", "time"] }
 
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.

@@ -2,7 +2,7 @@ mod srt_parser;
 mod waveform_generator;
 
 use srt_parser::{read_srt_file, write_srt_file, SRTFile, SubtitleEntry};
-use waveform_generator::generate_waveform;
+use waveform_generator::{generate_waveform_with_progress, ProgressCallback};
 use std::fs;
 use tauri::menu::{MenuBuilder, SubmenuBuilder};
 use tauri::{Emitter, Manager};
@@ -41,9 +41,36 @@ fn read_audio_file(file_path: String) -> Result<String, String> {
 /// Returns a vector of normalized amplitude values (0.0 to 1.0)
 /// target_samples: number of data points to generate (default: 2000)
 #[tauri::command]
-fn generate_audio_waveform(file_path: String, target_samples: Option<usize>) -> Result<Vec<f32>, String> {
+async fn generate_audio_waveform(
+    window: tauri::Window,
+    file_path: String,
+    target_samples: Option<usize>,
+) -> Result<Vec<f32>, String> {
     let samples = target_samples.unwrap_or(2000);
-    generate_waveform(&file_path, samples)
+    
+    let (tx, rx) = std::sync::mpsc::channel();
+    let window_clone = window.clone();
+    let file_path_clone = file_path.clone();
+    
+    // 在后台线程执行波形生成
+    std::thread::spawn(move || {
+        let window_for_callback = window_clone.clone();
+        let callback: ProgressCallback = Box::new(move |progress| {
+            let _ = window_for_callback.emit("waveform-progress", progress);
+        });
+        
+        let result = generate_waveform_with_progress(&file_path_clone, samples, Some(callback));
+        let _ = tx.send(result);
+    });
+    
+    // 异步等待结果
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        rx.recv().map_err(|e| format!("Channel error: {:?}", e))?
+    })
+    .await
+    .map_err(|e| format!("Task error: {:?}", e))??;
+    
+    Ok(result)
 }
 
 /// 触发前端打开文件事件

@@ -3431,6 +3431,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-prevent-default",
  "tauri-plugin-shell",
+ "tokio",
 ]
 
 [[package]]

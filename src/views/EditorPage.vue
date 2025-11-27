@@ -594,9 +594,9 @@ const handleKeydown = (e: KeyboardEvent) => {
 <template>
   <div class="editor-page">
     <!-- 时间轴区域：顶部全宽 -->
-    <div v-if="hasAudio" class="timeline-section">
+    <div v-if="hasAudio || audioStore.isGeneratingWaveform" class="timeline-section">
       <!-- 一体化控制栏：音频名称 + 缩放 + 播放 + 时长 + 音量 + 速度 -->
-      <div class="timeline-unified-controls">
+      <div v-if="hasAudio" class="timeline-unified-controls">
         <!-- 左侧组 -->
         <div class="controls-left">
           <span class="audio-name-compact">{{ audioStore.currentAudio?.name }}</span>
@@ -656,6 +656,10 @@ const handleKeydown = (e: KeyboardEvent) => {
           </el-button>
         </div>
       </div>
+      <!-- 波形生成时的简化控制栏 -->
+      <div v-else-if="audioStore.isGeneratingWaveform" class="timeline-unified-controls loading-controls">
+        <span class="loading-audio-text">正在加载音频...</span>
+      </div>
 
       <!-- 波形和字幕轨道 -->
       <WaveformViewer
@@ -665,6 +669,8 @@ const handleKeydown = (e: KeyboardEvent) => {
         :duration="audioStore.playerState.duration"
         :subtitles="subtitleStore.entries"
         :current-subtitle-id="selectedEntryId"
+        :is-generating-waveform="audioStore.isGeneratingWaveform"
+        :waveform-progress="audioStore.waveformProgress"
         @seek="handleWaveformSeek"
         @update-subtitle="handleSubtitleUpdate"
       />

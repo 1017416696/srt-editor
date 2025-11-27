@@ -19,9 +19,20 @@
 
           <!-- 波形图 -->
           <div class="waveform-layer" ref="waveformRef">
-            <div v-if="loading" class="loading-overlay">
-              <el-icon class="is-loading"><Loading /></el-icon>
-              <span>生成波形中...</span>
+            <!-- 加载动画 - 只在生成波形时显示 -->
+            <div v-if="props.isGeneratingWaveform" class="waveform-loading-overlay">
+              <div class="waveform-loading-box">
+                <!-- 纯 CSS 旋转动画 -->
+                <div class="spinner"></div>
+                <div class="loading-message">正在生成波形数据...</div>
+                <!-- 纯 CSS 进度条 -->
+                <div class="progress-bar-container">
+                  <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" :style="{ width: props.waveformProgress + '%' }"></div>
+                  </div>
+                  <div class="progress-text">{{ props.waveformProgress }}%</div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -83,14 +94,19 @@ interface Props {
   currentTime?: number
   duration?: number
   subtitles?: SubtitleEntry[]
+  isGeneratingWaveform?: boolean
+  waveformProgress?: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
   currentTime: 0,
   duration: 0,
-  subtitles: () => []
+  subtitles: () => [],
+  isGeneratingWaveform: false,
+  waveformProgress: 0
 })
 
+// 计算属性，用于调试
 const emit = defineEmits<{
   seek: [time: number]
   updateSubtitle: [id: number, startTime: TimeStamp, endTime: TimeStamp]
@@ -429,10 +445,22 @@ watch(zoomLevel, () => {
 
 // Watch for waveform data changes
 watch(() => props.waveformData, (data) => {
-  if (data && data.length > 0) {
-    nextTick(() => loadWaveformData(data))
+  if (data && data.length > 0 && !props.isGeneratingWaveform) {
+    nextTick(() => {
+      loadWaveformData(data)
+    })
   }
 }, { immediate: false })
+
+// Watch for waveform generation status
+watch(() => props.isGeneratingWaveform, (isGenerating) => {
+  // 当波形生成完成时，如果数据存在则加载
+  if (!isGenerating && props.waveformData && props.waveformData.length > 0) {
+    nextTick(() => {
+      loadWaveformData(props.waveformData!)
+    })
+  }
+}, { immediate: true })
 
 // Auto-scroll to current time
 watch(() => props.currentTime, (time) => {
@@ -451,7 +479,8 @@ watch(() => props.currentTime, (time) => {
 onMounted(() => {
   initWaveSurfer()
 
-  if (props.waveformData && props.waveformData.length > 0) {
+  // 只有在波形生成完成且数据存在时才加载
+  if (props.waveformData && props.waveformData.length > 0 && !props.isGeneratingWaveform) {
     setTimeout(() => {
       loadWaveformData(props.waveformData!)
     }, 100)
@@ -567,21 +596,98 @@ defineExpose({
   height: 120px;
   background: linear-gradient(to bottom, #f8fafc 0%, #f1f5f9 100%);
   position: relative;
+  overflow: visible;
 }
 
-.loading-overlay {
-  position: absolute;
+/* 波形加载动画 - 纯 CSS 实现 */
+.waveform-loading-overlay {
+  position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(248, 250, 252, 0.95);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  z-index: 9999;
+}
+
+.waveform-loading-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 40px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* 旋转加载动画 */
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #e5e7eb;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-message {
+  font-size: 15px;
+  font-weight: 500;
+  color: #374151;
+}
+
+/* 进度条 */
+.progress-bar-container {
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-bar-bg {
+  width: 100%;
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
   font-size: 14px;
-  color: #64748b;
+  font-weight: 600;
+  color: #3b82f6;
+}
+
+/* 旋转动画 */
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.is-loading {
+  animation: rotate 1s linear infinite;
 }
 
 /* 字幕轨道 */
