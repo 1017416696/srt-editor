@@ -106,6 +106,11 @@ const replaceAll = async () => {
   }
 
   try {
+    // 如果正在播放，暂停
+    if (audioStore.playerState.isPlaying) {
+      audioStore.pause()
+    }
+
     let modifiedCount = 0
 
     subtitleStore.entries.forEach((entry) => {
@@ -136,6 +141,11 @@ const replaceOne = async () => {
   let newText = entry.text
 
   try {
+    // 如果正在播放，暂停
+    if (audioStore.playerState.isPlaying) {
+      audioStore.pause()
+    }
+
     // 只支持普通字符串替换
     newText = newText.replaceAll(searchText.value, replaceText.value)
 
@@ -164,6 +174,11 @@ const autoSaveCurrentEntry = async () => {
   if (!hasChanges) {
     // 如果没有变化，不保存也不显示消息
     return
+  }
+
+  // 如果正在播放，暂停
+  if (audioStore.playerState.isPlaying) {
+    audioStore.pause()
   }
 
   // 更新 store 中的数据
@@ -198,6 +213,11 @@ const handleTextareaBlur = async () => {
 
 // 监听文本编辑，设置防抖计时器
 const handleTextInput = () => {
+  // 如果正在播放，立即暂停
+  if (audioStore.playerState.isPlaying) {
+    audioStore.pause()
+  }
+
   // 清除之前的计时器
   if (autoSaveTimer) {
     clearTimeout(autoSaveTimer)
@@ -402,6 +422,11 @@ const selectEntry = (id: number) => {
 
 // 添加字幕
 const handleAddEntry = () => {
+  // 如果正在播放，暂停
+  if (audioStore.playerState.isPlaying) {
+    audioStore.pause()
+  }
+
   subtitleStore.addEntry()
 
   // 选中新添加的字幕
@@ -414,6 +439,11 @@ const handleAddEntry = () => {
 // 删除字幕
 const handleDeleteEntry = async () => {
   if (!currentEntry.value) return
+
+  // 如果正在播放，暂停
+  if (audioStore.playerState.isPlaying) {
+    audioStore.pause()
+  }
 
   const currentId = currentEntry.value.id
   const currentIndex = subtitleStore.entries.findIndex((e) => e.id === currentId)
@@ -483,6 +513,11 @@ const deleteSubtitleItem = async (id: number) => {
       }
     )
 
+    // 如果正在播放，暂停
+    if (audioStore.playerState.isPlaying) {
+      audioStore.pause()
+    }
+
     // 用户点击了确认
     const currentIndex = subtitleStore.entries.findIndex((e) => e.id === id)
 
@@ -522,6 +557,11 @@ const deleteSubtitleItem = async (id: number) => {
 
 // 移除 HTML 标签
 const handleRemoveHTML = () => {
+  // 如果正在播放，暂停
+  if (audioStore.playerState.isPlaying) {
+    audioStore.pause()
+  }
+
   subtitleStore.removeHTMLTags()
   if (currentEntry.value) {
     editingText.value = currentEntry.value.text
@@ -543,6 +583,11 @@ const handleSubtitleUpdate = (id: number, startTime: TimeStamp, endTime: TimeSta
     return
   }
 
+  // 如果正在播放，暂停
+  if (audioStore.playerState.isPlaying) {
+    audioStore.pause()
+  }
+
   // 更新字幕时间
   subtitleStore.updateEntryTime(id, startTime, endTime)
 
@@ -557,6 +602,11 @@ const handleSubtitleUpdate = (id: number, startTime: TimeStamp, endTime: TimeSta
 // 处理批量字幕时间更新
 const handleSubtitlesUpdate = (updates: Array<{ id: number; startTime: TimeStamp; endTime: TimeStamp }>) => {
   console.log(`📝 Batch updating ${updates.length} subtitles from waveform`)
+
+  // 如果正在播放，暂停
+  if (audioStore.playerState.isPlaying) {
+    audioStore.pause()
+  }
 
   // 批量更新字幕时间
   updates.forEach(({ id, startTime, endTime }) => {
