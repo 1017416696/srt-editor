@@ -353,25 +353,28 @@ const handleTrackMouseDown = (event: MouseEvent) => {
   // 获取字幕轨道的位置
   const subtitleTrack = trackAreaRef.value.querySelector('.subtitle-track') as HTMLElement
   if (!subtitleTrack) return
-  
+
   const trackElementRect = subtitleTrack.getBoundingClientRect()
   const startX = initialX - trackRect.left + trackAreaRef.value.scrollLeft
   const startY = initialY - trackElementRect.top
 
   // 立即创建选择框，但先设置为很小的尺寸
   isSelecting.value = true
-  
+
   // 如果不是累加模式，清除之前的选择
   if (!isAccumulateMode) {
     selectedSubtitleIds.value.clear()
   }
-  
+
   selectionBox.value = {
     startX,
     startY,
     endX: startX,
     endY: startY
   }
+
+  // 记录初始时间（用于判断点击是否移动）
+  const initialTime = pixelToTime(startX)
 
   const handleMove = (e: MouseEvent) => {
     const deltaX = Math.abs(e.clientX - initialX)
@@ -405,26 +408,32 @@ const handleTrackMouseDown = (event: MouseEvent) => {
   const handleUp = (e: MouseEvent) => {
     document.removeEventListener('mousemove', handleMove)
     document.removeEventListener('mouseup', handleUp)
-    
-    // 如果没有移动，只是点击，清除选择（除非按住 Shift/Ctrl 等）
-    if (!hasMoved && !isAccumulateMode) {
-      selectedSubtitleIds.value.clear()
-      emit('selectSubtitles', [])
+
+    // 如果没有移动，只是点击，跳转到该时间点
+    if (!hasMoved) {
+      // 发送 seek 事件
+      emit('seek', initialTime)
+
+      // 清除选择（除非按住 Shift/Ctrl 等）
+      if (!isAccumulateMode) {
+        selectedSubtitleIds.value.clear()
+        emit('selectSubtitles', [])
+      }
     }
-    
+
     // 结束框选
     isSelecting.value = false
-    
+
     // 如果选择框太小，清除选择
     if (selectionBox.value) {
       const width = Math.abs(selectionBox.value.endX - selectionBox.value.startX)
       const height = Math.abs(selectionBox.value.endY - selectionBox.value.startY)
-      
+
       if (width < 10 && height < 10 && !isAccumulateMode) {
         selectedSubtitleIds.value.clear()
       }
     }
-    
+
     selectionBox.value = null
     emit('selectSubtitles', Array.from(selectedSubtitleIds.value))
   }
