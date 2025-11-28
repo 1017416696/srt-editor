@@ -41,6 +41,7 @@ const selectedEntryId = ref<number | null>(null)
 const editingText = ref('')
 const subtitleListContainer = ref<HTMLElement | null>(null)
 const searchInputRef = ref<InstanceType<typeof HTMLInputElement> | null>(null)
+const textareaInputRef = ref<any>(null) // el-input 的 ref
 const subtitleItemRefs: Record<number, HTMLElement | null> = {}
 const isUserEditing = ref(false) // 标记是否是用户在编辑
 const isUserSelectingEntry = ref(false) // 标记用户是否在手动选择字幕
@@ -485,6 +486,30 @@ const handleSubtitlesSelect = (ids: number[]) => {
   // 目前主要用于多选状态同步
 }
 
+// 处理波形下字幕块的双击 - 跳转到编辑区并聚焦
+const handleWaveformDoubleClick = async (id: number) => {
+  // 确保字幕已被选中
+  selectEntry(id)
+
+  // 延迟焦点设置，让 DOM 有时间更新
+  await nextTick()
+
+  // 获取 el-input 组件并聚焦
+  if (textareaInputRef.value) {
+    // el-input 组件提供了 focus 方法
+    textareaInputRef.value.focus()
+
+    // 延迟设置光标位置，确保获得焦点后再设置
+    await nextTick()
+    const textarea = textareaInputRef.value.textarea as HTMLTextAreaElement
+    if (textarea) {
+      // 将光标放在文字的末尾
+      const textLength = textarea.value.length
+      textarea.setSelectionRange(textLength, textLength)
+    }
+  }
+}
+
 // WaveformViewer ref
 const waveformViewerRef = ref<InstanceType<typeof WaveformViewer> | null>(null)
 
@@ -788,6 +813,7 @@ const handleKeydown = (e: KeyboardEvent) => {
         @update-subtitle="handleSubtitleUpdate"
         @update-subtitles="handleSubtitlesUpdate"
         @select-subtitles="handleSubtitlesSelect"
+        @double-click-subtitle="handleWaveformDoubleClick"
       />
     </div>
 
@@ -944,9 +970,10 @@ const handleKeydown = (e: KeyboardEvent) => {
           </div>
 
           <!-- 文本编辑 -->
-          <div class="text-edit-section">
+          <div class="text-edit-section" ref="textareaRef">
             <label class="text-label">字幕文本</label>
             <el-input
+              ref="textareaInputRef"
               v-model="editingText"
               type="textarea"
               :rows="6"

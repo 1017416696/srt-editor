@@ -49,6 +49,7 @@
               }"
               :style="getSubtitleStyle(subtitle)"
               @mousedown="handleSubtitleMouseDown($event, subtitle)"
+              @dblclick="handleSubtitleDoubleClick(subtitle)"
             >
               <!-- 左调整手柄 -->
               <div
@@ -125,6 +126,7 @@ const emit = defineEmits<{
   updateSubtitle: [id: number, startTime: TimeStamp, endTime: TimeStamp]
   updateSubtitles: [updates: Array<{ id: number; startTime: TimeStamp; endTime: TimeStamp }>]
   selectSubtitles: [ids: number[]]
+  doubleClickSubtitle: [id: number]
 }>()
 
 // Refs
@@ -567,6 +569,12 @@ const handleWheel = (event: WheelEvent) => {
     // 将播放指针保持在视图的中央位置
     trackAreaRef.value!.scrollLeft = newPlayheadPixel - containerWidth / 2
   })
+}
+
+// Handle subtitle double click - focus the text input
+const handleSubtitleDoubleClick = (subtitle: SubtitleEntry) => {
+  // 发送双击事件，告诉父组件选中此字幕并跳转到编辑区
+  emit('doubleClickSubtitle', subtitle.id)
 }
 
 // Subtitle dragging
