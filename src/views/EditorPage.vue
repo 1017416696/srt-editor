@@ -10,6 +10,8 @@ import { useConfigStore } from '@/stores/config'
 import { timeStampToMs } from '@/utils/time'
 import type { SRTFile, AudioFile, TimeStamp } from '@/types/subtitle'
 import WaveformViewer from '@/components/WaveformViewer.vue'
+import { DocumentCopy, VideoPlay, Delete } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 // Debounce helper function
 function debounce<T extends (...args: any[]) => any>(func: T, wait: number) {
@@ -426,6 +428,95 @@ const handleDeleteEntry = async () => {
     }
   } else {
     selectedEntryId.value = null
+  }
+}
+
+// 复制字幕文本
+const copySubtitleText = async (id: number) => {
+  const entry = subtitleStore.entries.find((e) => e.id === id)
+  if (!entry) return
+
+  try {
+    await navigator.clipboard.writeText(entry.text)
+    ElMessage.success({
+      message: '已复制',
+      duration: 1500,
+    })
+  } catch (error) {
+    ElMessage.error({
+      message: '复制失败',
+      duration: 1500,
+    })
+  }
+}
+
+// 播放字幕音频
+const playSubtitleAudio = (id: number) => {
+  if (!hasAudio.value) return
+
+  const entry = subtitleStore.entries.find((e) => e.id === id)
+  if (!entry) return
+
+  // 将时间戳转换为毫秒，再转换为秒数
+  const timeMs = timeStampToMs(entry.startTime)
+  const timeSeconds = timeMs / 1000
+
+  // 跳转到字幕的开始时间并播放
+  audioStore.seek(timeSeconds)
+  audioStore.play()
+}
+
+// 删除字幕项目（从列表中快速删除）
+const deleteSubtitleItem = async (id: number) => {
+  const entry = subtitleStore.entries.find((e) => e.id === id)
+  if (!entry) return
+
+  try {
+    // 显示确认对话框
+    await ElMessageBox.confirm(
+      `确定删除字幕 #${id} 吗？`,
+      '删除确认',
+      {
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+
+    // 用户点击了确认
+    const currentIndex = subtitleStore.entries.findIndex((e) => e.id === id)
+
+    subtitleStore.deleteEntry(id)
+
+    // 保存文件
+    if (subtitleStore.currentFilePath) {
+      await subtitleStore.saveToFile()
+    }
+
+    // 如果删除的是当前选中的字幕，选中下一条或上一条
+    if (selectedEntryId.value === id) {
+      if (subtitleStore.entries.length > 0) {
+        const nextEntry = subtitleStore.entries[currentIndex] || subtitleStore.entries[currentIndex - 1]
+        if (nextEntry) {
+          selectedEntryId.value = nextEntry.id
+        }
+      } else {
+        selectedEntryId.value = null
+      }
+    }
+
+    ElMessage.success({
+      message: '已删除',
+      duration: 1500,
+    })
+  } catch (error) {
+    // 用户点击了取消，或其他错误
+    if (error instanceof Error && error.message !== 'cancel') {
+      ElMessage.error({
+        message: '删除失败',
+        duration: 1500,
+      })
+    }
   }
 }
 
@@ -900,8 +991,51 @@ const handleKeydown = (e: KeyboardEvent) => {
                 {{ subtitleStore.formatTimeStamp(entry.endTime).slice(0, 8) }}
               </span>
             </div>
-            <div class="item-text" v-if="searchText" v-html="highlightSearchText(entry.text, searchText)"></div>
-            <div class="item-text" v-else>{{ entry.text }}</div>
+
+            <!-- 文本和操作按钮在同一行 -->
+            <div class="item-content">
+              <div class="item-text-wrapper">
+                <div class="item-text" v-if="searchText" v-html="highlightSearchText(entry.text, searchText)"></div>
+                <div class="item-text" v-else>{{ entry.text }}</div>
+              </div>
+
+              <!-- 操作按钮 -->
+              <div class="item-actions">
+                <el-button
+                  link
+                  type="primary"
+                  size="small"
+                  title="复制文本"
+                  @click.stop="copySubtitleText(entry.id)"
+                >
+                  <template #icon>
+                    <DocumentCopy />
+                  </template>
+                </el-button>
+                <el-button
+                  link
+                  type="primary"
+                  size="small"
+                  title="播放字幕音频"
+                  @click.stop="playSubtitleAudio(entry.id)"
+                >
+                  <template #icon>
+                    <VideoPlay />
+                  </template>
+                </el-button>
+                <el-button
+                  link
+                  type="danger"
+                  size="small"
+                  title="删除字幕"
+                  @click.stop="deleteSubtitleItem(entry.id)"
+                >
+                  <template #icon>
+                    <Delete />
+                  </template>
+                </el-button>
+              </div>
+            </div>
           </div>
 
           <!-- 空状态 -->
@@ -1357,15 +1491,26 @@ const handleKeydown = (e: KeyboardEvent) => {
   font-family: monospace;
 }
 
+.item-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.item-text-wrapper {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .item-text {
   color: #333;
   font-size: 0.875rem;
   line-height: 1.5;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
 }
 
 .list-footer {
@@ -1508,6 +1653,44 @@ mark {
   border-radius: 0.2rem;
   font-weight: 500;
   box-shadow: 0 0 0 1px rgba(255, 215, 0, 0.3);
+}
+
+/* 字幕项目操作按钮 */
+.item-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  align-items: center;
+  margin-left: 0.5rem;
+}
+
+.item-actions :deep(.el-button) {
+  padding: 0;
+  font-size: 0.875rem;
+  line-height: 1;
+  min-width: auto;
+  height: auto;
+}
+
+.item-actions :deep(.el-button[type='primary']) {
+  color: #409eff;
+}
+
+.item-actions :deep(.el-button[type='primary']:hover) {
+  color: #66b1ff;
+}
+
+.item-actions :deep(.el-button[type='danger']) {
+  color: #f56c6c;
+}
+
+.item-actions :deep(.el-button[type='danger']:hover) {
+  color: #f85e5e;
+}
+
+.item-actions :deep(.el-icon) {
+  width: 1em;
+  height: 1em;
 }
 
 </style>
