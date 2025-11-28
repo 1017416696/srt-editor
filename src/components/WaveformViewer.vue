@@ -37,7 +37,7 @@
           </div>
 
           <!-- 字幕轨道 -->
-          <div class="subtitle-track" @mousedown="handleTrackMouseDown">
+          <div class="subtitle-track" :style="{ height: subtitleTrackHeight + 'px' }" @mousedown="handleTrackMouseDown">
             <div
               v-for="subtitle in subtitles"
               :key="subtitle.id"
@@ -77,7 +77,7 @@
                 left: Math.min(selectionBox.startX, selectionBox.endX) + 'px',
                 top: '0px',
                 width: Math.abs(selectionBox.endX - selectionBox.startX) + 'px',
-                height: '80px'
+                height: subtitleTrackHeight + 'px'
               }"
             ></div>
           </div>
@@ -139,6 +139,25 @@ const waveformRebuildTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 const zoomLevel = ref(1) // 缩放级别：1 = 1秒占用 100px
 const pixelsPerSecond = computed(() => 100 * zoomLevel.value)
 const timelineWidth = computed(() => props.duration * pixelsPerSecond.value)
+
+// 计算字幕轨道的高度（基于轨道数量）
+const subtitleTrackHeight = computed(() => {
+  if (!props.subtitles || props.subtitles.length === 0) return 80
+
+  // 找出最大的轨道号
+  const maxTrackNumber = Math.max(
+    ...props.subtitles.map(s => s.trackNumber ?? 0),
+    0
+  )
+
+  // 轨道 0 从 top: 20px 开始，每条轨道高度 40px，间隙 2px
+  // 最后一条轨道的下边界 = 20 + (maxTrackNumber + 1) * 40 + maxTrackNumber * 2 + 20(底部padding)
+  const trackHeight = 40
+  const trackGap = 2
+  const totalHeight = 20 + (maxTrackNumber + 1) * trackHeight + maxTrackNumber * trackGap + 20
+
+  return Math.max(totalHeight, 80)
+})
 
 // Selection state
 const selectedSubtitleIds = ref<Set<number>>(new Set())
@@ -211,7 +230,7 @@ const getSubtitleStyle = (subtitle: SubtitleEntry) => {
   // 生成颜色
   const hue = (subtitle.id * 137.5) % 360
   const color = `hsl(${hue}, 70%, 65%)`
-  
+
   // 如果被选中，使用更亮的颜色作为基础色
   const isSelected = selectedSubtitleIds.value.has(subtitle.id)
   const baseColor = isSelected ? `hsl(${hue}, 75%, 70%)` : color
@@ -220,9 +239,16 @@ const getSubtitleStyle = (subtitle: SubtitleEntry) => {
   // 缩放越小，最小宽度也越小，避免字幕块过长挤占空间
   const minWidth = Math.max(10, Math.round(20 * zoomLevel.value))
 
+  // 根据轨道号计算垂直位置
+  const trackNumber = subtitle.trackNumber ?? 0
+  const trackHeight = 40  // 每条轨道高度
+  const trackGap = 2      // 轨道间隙
+  const top = 20 + (trackNumber * (trackHeight + trackGap))
+
   return {
     left: left + 'px',
     width: Math.max(width, minWidth) + 'px',
+    top: top + 'px',
     backgroundColor: baseColor
   }
 }
@@ -464,8 +490,13 @@ const updateSelectionFromBox = (accumulate: boolean = false) => {
     const end = timestampToSeconds(subtitle.endTime)
     const left = timeToPixel(start)
     const right = timeToPixel(end)
-    const top = 20 // 字幕块在轨道中的位置（top: 20px）
-    const bottom = top + 40 // 字幕块高度（height: 40px）
+
+    // 根据轨道号计算字幕块的垂直位置
+    const trackNumber = subtitle.trackNumber ?? 0
+    const trackHeight = 40
+    const trackGap = 2
+    const top = 20 + (trackNumber * (trackHeight + trackGap))
+    const bottom = top + trackHeight
 
     // 检查是否与选择框相交
     // 只要字幕块与选择框有任何重叠，就选中它
@@ -1024,7 +1055,8 @@ defineExpose({
 /* 字幕轨道 */
 .subtitle-track {
   width: 100%;
-  height: 80px;
+  height: auto;
+  min-height: 80px;
   position: relative;
   background: #f8fafc;
   border-top: 1px solid #e2e8f0;
@@ -1038,7 +1070,6 @@ defineExpose({
 /* 字幕块 */
 .subtitle-block {
   position: absolute;
-  top: 20px;
   height: 40px;
   border-radius: 4px;
   border: 2px solid transparent;

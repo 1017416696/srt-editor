@@ -22,6 +22,7 @@ export interface SubtitleEntry {
   text: string // 字幕文本
   isEditing?: boolean // 是否正在编辑
   hasConflict?: boolean // 是否存在时间冲突
+  trackNumber?: number // 轨道号 (0=默认轨道, 1=冲突轨道)
 }
 
 /**

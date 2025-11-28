@@ -82,6 +82,61 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     return conflicts
   }
 
+  // 分配字幕到轨道 (支持最多 2 个轨道)
+  const assignSubtitleToTracks = () => {
+    // 重置所有字幕的轨道号
+    entries.value.forEach((entry) => {
+      entry.trackNumber = 0
+    })
+
+    // 按开始时间排序
+    const sortedEntries = [...entries.value].sort((a, b) => {
+      return timeStampToMs(a.startTime) - timeStampToMs(b.startTime)
+    })
+
+    // 记录每条轨道的占用区间: Map<trackNumber, Array<{startMs, endMs}>>
+    const trackOccupancy: Map<number, Array<{ startMs: number; endMs: number }>> =
+      new Map()
+
+    // 为每个字幕分配轨道
+    sortedEntries.forEach((entry) => {
+      const startMs = timeStampToMs(entry.startTime)
+      const endMs = timeStampToMs(entry.endTime)
+
+      // 找第一个不冲突的轨道
+      let assignedTrack = 0
+
+      // 只支持最多 2 个轨道 (0 和 1)
+      for (let track = 0; track <= 1; track++) {
+        if (!trackOccupancy.has(track)) {
+          trackOccupancy.set(track, [])
+        }
+
+        const occupied = trackOccupancy.get(track)!
+        // 检查是否与当前轨道上的任何区间冲突
+        const hasConflict = occupied.some((seg) => {
+          // endMs > startMs 表示有冲突（根据冲突定义）
+          return endMs > seg.startMs && startMs < seg.endMs
+        })
+
+        if (!hasConflict) {
+          assignedTrack = track
+          break
+        }
+      }
+
+      // 将字幕分配到找到的轨道
+      const actualEntry = entries.value.find((e) => e.id === entry.id)
+      if (actualEntry) {
+        actualEntry.trackNumber = assignedTrack
+      }
+
+      // 记录轨道占用
+      const track = trackOccupancy.get(assignedTrack)!
+      track.push({ startMs, endMs })
+    })
+  }
+
   // 加载 SRT 文件
   const loadSRTFile = (file: SRTFile) => {
     srtFile.value = file
@@ -90,6 +145,7 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     history.value = []
     historyIndex.value = -1
     detectTimeConflicts()
+    assignSubtitleToTracks()
   }
 
   // 根据播放时间获取当前字幕
@@ -162,6 +218,7 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     })
 
     detectTimeConflicts()
+    assignSubtitleToTracks()
   }
 
   // 删除字幕
@@ -188,6 +245,7 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     }
 
     detectTimeConflicts()
+    assignSubtitleToTracks()
   }
 
   // 新增字幕
@@ -281,6 +339,8 @@ export const useSubtitleStore = defineStore('subtitle', () => {
 
     currentEntryId.value = newId
     editingEntryId.value = newId
+
+    assignSubtitleToTracks()
   }
 
   // 批量去除标点符号
@@ -451,6 +511,7 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     removePunctuation,
     removeHTMLTags,
     detectTimeConflicts,
+    assignSubtitleToTracks,
     undo,
     redo,
     search,
