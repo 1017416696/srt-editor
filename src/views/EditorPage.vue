@@ -558,6 +558,50 @@ const buildKeyString = (e: KeyboardEvent): string => {
   return `${modifier}${baseKey}`
 }
 
+// 键盘导航字幕列表
+const navigateSubtitleList = (direction: 'up' | 'down') => {
+  if (filteredEntries.value.length === 0) return
+
+  let targetIndex = -1
+
+  if (selectedEntryId.value === null) {
+    // 如果没有选中任何字幕，选中第一个（向下）或最后一个（向上）
+    targetIndex = direction === 'down' ? 0 : filteredEntries.value.length - 1
+  } else {
+    // 找到当前选中字幕在过滤列表中的位置
+    const currentIndex = filteredEntries.value.findIndex(e => e.id === selectedEntryId.value)
+
+    if (currentIndex !== -1) {
+      if (direction === 'down') {
+        // 向下，移动到下一个（如果已经在最后，保持不变）
+        targetIndex = Math.min(currentIndex + 1, filteredEntries.value.length - 1)
+      } else {
+        // 向上，移动到上一个（如果已经在最前，保持不变）
+        targetIndex = Math.max(currentIndex - 1, 0)
+      }
+    } else {
+      // 如果当前选中的字幕不在过滤列表中，选择第一个或最后一个
+      targetIndex = direction === 'down' ? 0 : filteredEntries.value.length - 1
+    }
+  }
+
+  if (targetIndex !== -1) {
+    const targetEntry = filteredEntries.value[targetIndex]
+    if (targetEntry) {
+      selectEntry(targetEntry.id)
+
+      // 自动滚动字幕列表，使目标字幕保持在可见范围内
+      nextTick(() => {
+        const itemElement = subtitleItemRefs[targetEntry.id]
+        const containerElement = subtitleListContainer.value
+        if (itemElement && containerElement) {
+          itemElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        }
+      })
+    }
+  }
+}
+
 // 键盘快捷键
 const handleKeydown = (e: KeyboardEvent) => {
   const target = e.target as HTMLElement
@@ -591,7 +635,7 @@ const handleKeydown = (e: KeyboardEvent) => {
     return
   }
 
-  // 不在文本框内，处理全局快捷键
+  // 不在文本框内，处理全局快捷键和导航
   if (shortcuts.save === pressedKey) {
     e.preventDefault()
     handleSave()
@@ -623,6 +667,14 @@ const handleKeydown = (e: KeyboardEvent) => {
     // macOS: Cmd+-, Windows/Linux: Ctrl+-
     e.preventDefault()
     handleZoomOut()
+  } else if (e.key === 'ArrowDown') {
+    // 向下箭头：在列表中向下导航
+    e.preventDefault()
+    navigateSubtitleList('down')
+  } else if (e.key === 'ArrowUp') {
+    // 向上箭头：在列表中向上导航
+    e.preventDefault()
+    navigateSubtitleList('up')
   }
 }
 </script>
