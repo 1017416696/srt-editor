@@ -558,6 +558,20 @@ const buildKeyString = (e: KeyboardEvent): string => {
   return `${modifier}${baseKey}`
 }
 
+// 高亮搜索结果中的匹配文本
+const highlightSearchText = (text: string, searchQuery: string): string => {
+  if (!searchQuery) return text
+
+  try {
+    // 使用全局忽略大小写的正则表达式来替换所有匹配的文本
+    const regex = new RegExp(`(${searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
+    return text.replace(regex, '<mark>$1</mark>')
+  } catch {
+    // 如果正则表达式失败，返回原始文本
+    return text
+  }
+}
+
 // 键盘导航字幕列表
 const navigateSubtitleList = (direction: 'up' | 'down') => {
   if (filteredEntries.value.length === 0) return
@@ -849,7 +863,8 @@ const handleKeydown = (e: KeyboardEvent) => {
                 {{ subtitleStore.formatTimeStamp(entry.endTime).slice(0, 8) }}
               </span>
             </div>
-            <div class="item-text">{{ entry.text }}</div>
+            <div class="item-text" v-if="searchText" v-html="highlightSearchText(entry.text, searchText)"></div>
+            <div class="item-text" v-else>{{ entry.text }}</div>
           </div>
 
           <!-- 空状态 -->
@@ -1445,6 +1460,16 @@ const handleKeydown = (e: KeyboardEvent) => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* 搜索高亮样式 */
+mark {
+  background-color: #ffd700;
+  color: #333;
+  padding: 0.1rem 0.2rem;
+  border-radius: 0.2rem;
+  font-weight: 500;
+  box-shadow: 0 0 0 1px rgba(255, 215, 0, 0.3);
 }
 
 </style>
