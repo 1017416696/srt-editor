@@ -11,7 +11,7 @@ import { useConfigStore } from '@/stores/config'
 import { timeStampToMs } from '@/utils/time'
 import type { SRTFile, AudioFile, TimeStamp } from '@/types/subtitle'
 import WaveformViewer from '@/components/WaveformViewer.vue'
-import { DocumentCopy, VideoPlay, Delete, PriceTag, Document, Setting, Plus } from '@element-plus/icons-vue'
+import { DocumentCopy, VideoPlay, Delete, PriceTag, Document, Setting, Plus, Scissor } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 // Debounce helper function
@@ -50,6 +50,7 @@ const textareaInputRef = ref<any>(null) // el-input 的 ref
 const subtitleItemRefs: Record<number, HTMLElement | null> = {}
 const isUserEditing = ref(false) // 标记是否是用户在编辑
 const isUserSelectingEntry = ref(false) // 标记用户是否在手动选择字幕
+const isScissorMode = ref(false) // 剪刀模式：分割字幕
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null // 用于记录防抖计时器
 let userSelectionTimer: ReturnType<typeof setTimeout> | null = null // 用于记录用户选择的计时器
 let isSaving = false // 防止保存重复触发
@@ -843,6 +844,48 @@ const openSubtitle = async () => {
   }
 }
 
+// 剪刀模式：分割字幕
+const handleScissor = () => {
+  if (!hasAudio.value) {
+    ElMessage.warning('请先加载音频文件')
+    return
+  }
+
+  // 切换剪刀模式
+  isScissorMode.value = !isScissorMode.value
+
+  if (isScissorMode.value) {
+    ElMessage.info('已进入分割模式，点击时间轴上的字幕进行分割')
+  }
+}
+
+// 处理字幕分割
+const handleSplitSubtitle = async (id: number, splitTimeMs: number) => {
+  // 如果正在播放，暂停
+  if (audioStore.playerState.isPlaying) {
+    audioStore.pause()
+  }
+
+  const newId = subtitleStore.splitEntry(id, splitTimeMs)
+
+  if (newId) {
+    // 选中新分割出的字幕
+    selectedEntryId.value = newId
+
+    // 保存文件
+    if (subtitleStore.currentFilePath) {
+      try {
+        await subtitleStore.saveToFile()
+      } catch (error) {
+        // 保存失败，静默处理
+      }
+    }
+  }
+
+  // 退出剪刀模式
+  isScissorMode.value = false
+}
+
 // 返回欢迎页
 const goBack = async () => {
   // 清理音频状态
@@ -962,6 +1005,13 @@ const navigateSubtitleList = (direction: 'up' | 'down') => {
 
 // 键盘快捷键
 const handleKeydown = (e: KeyboardEvent) => {
+  // ESC 键退出剪刀模式
+  if (e.key === 'Escape' && isScissorMode.value) {
+    e.preventDefault()
+    isScissorMode.value = false
+    return
+  }
+
   const target = e.target as HTMLElement
 
   // 检查是否在文本输入框内
@@ -1050,6 +1100,10 @@ const handleKeydown = (e: KeyboardEvent) => {
     // 向上箭头：在列表中向上导航
     e.preventDefault()
     navigateSubtitleList('up')
+  } else if (e.key === 'x' || e.key === 'X') {
+    // x 键：开启/关闭分割模式
+    e.preventDefault()
+    handleScissor()
   }
 }
 </script>
@@ -1061,6 +1115,9 @@ const handleKeydown = (e: KeyboardEvent) => {
       <!-- 左侧字幕按钮（紧贴红绿灯右侧） -->
       <button class="subtitle-btn" @click="openSubtitle" @mousedown.stop title="添加字幕">
         <el-icon><Plus /></el-icon>
+      </button>
+      <button class="scissor-btn" :class="{ active: isScissorMode }" @click="handleScissor" @mousedown.stop title="分割字幕">
+        <el-icon><Scissor /></el-icon>
       </button>
       <span class="titlebar-title">SRT 字幕编辑器</span>
       <button class="settings-btn" @click="openSettings" @mousedown.stop>
@@ -1146,11 +1203,13 @@ const handleKeydown = (e: KeyboardEvent) => {
         :current-subtitle-id="selectedEntryId"
         :is-generating-waveform="audioStore.isGeneratingWaveform"
         :waveform-progress="audioStore.waveformProgress"
+        :scissor-mode="isScissorMode"
         @seek="handleWaveformSeek"
         @update-subtitle="handleSubtitleUpdate"
         @update-subtitles="handleSubtitlesUpdate"
         @select-subtitles="handleSubtitlesSelect"
         @double-click-subtitle="handleWaveformDoubleClick"
+        @split-subtitle="handleSplitSubtitle"
       />
     </div>
 
@@ -2277,6 +2336,43 @@ mark {
 }
 
 .subtitle-btn .el-icon {
+  font-size: 16px;
+  color: #666;
+  pointer-events: none;
+}
+
+/* 剪刀按钮（紧贴添加按钮右侧） */
+.scissor-btn {
+  position: absolute;
+  left: 106px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.scissor-btn:hover .el-icon {
+  color: #409eff;
+}
+
+.scissor-btn.active {
+  background: #409eff;
+  border-radius: 4px;
+}
+
+.scissor-btn.active .el-icon {
+  color: #fff;
+}
+
+.scissor-btn .el-icon {
   font-size: 16px;
   color: #666;
   pointer-events: none;

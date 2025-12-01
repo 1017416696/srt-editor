@@ -261,6 +261,71 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     assignSubtitleToTracks()
   }
 
+  // 分割字幕
+  const splitEntry = (entryId: number, splitTimeMs: number) => {
+    const entry = entries.value.find((e) => e.id === entryId)
+    if (!entry) return null
+
+    const startMs = timeStampToMs(entry.startTime)
+    const endMs = timeStampToMs(entry.endTime)
+
+    // 确保分割点在字幕时间范围内
+    if (splitTimeMs <= startMs || splitTimeMs >= endMs) {
+      return null
+    }
+
+    // 辅助函数：毫秒转时间戳
+    const msToTimeStamp = (ms: number): TimeStamp => {
+      const totalSeconds = Math.floor(ms / 1000)
+      return {
+        hours: Math.floor(totalSeconds / 3600),
+        minutes: Math.floor((totalSeconds % 3600) / 60),
+        seconds: totalSeconds % 60,
+        milliseconds: ms % 1000,
+      }
+    }
+
+    // 保存原始数据用于历史记录
+    const originalEntry = { ...entry }
+
+    // 修改原字幕的结束时间为分割点
+    entry.endTime = msToTimeStamp(splitTimeMs)
+
+    // 创建新字幕，从分割点开始到原结束时间
+    const index = entries.value.findIndex((e) => e.id === entryId)
+    const newEntry: SubtitleEntry = {
+      id: entryId + 1, // 临时 id，后面会重新编号
+      startTime: msToTimeStamp(splitTimeMs),
+      endTime: msToTimeStamp(endMs),
+      text: entry.text, // 复制原文本
+    }
+
+    // 在原字幕后面插入新字幕
+    entries.value.splice(index + 1, 0, newEntry)
+
+    // 重新编号：从 1 开始连续编号
+    entries.value.forEach((e, i) => {
+      e.id = i + 1
+    })
+
+    // 获取新字幕的实际 id
+    const newId = index + 2
+
+    addHistory({
+      type: HistoryActionType.BATCH,
+      timestamp: Date.now(),
+      entryId: entryId,
+      before: { ...originalEntry },
+      after: {},
+      description: `分割字幕 #${entryId}`,
+    })
+
+    detectTimeConflicts()
+    assignSubtitleToTracks()
+
+    return newId
+  }
+
   // 新增字幕
   const addEntry = (afterId?: number) => {
     // 默认时长 3 秒
@@ -522,6 +587,7 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     updateEntryText,
     updateEntryTime,
     deleteEntry,
+    splitEntry,
     addEntry,
     removePunctuation,
     removeHTMLTags,

@@ -37,15 +37,16 @@
           </div>
 
           <!-- 字幕轨道 -->
-          <div class="subtitle-track" :style="{ height: subtitleTrackHeight + 'px' }" @mousedown="handleTrackMouseDown">
+          <div class="subtitle-track" :class="{ 'scissor-mode': props.scissorMode }" :style="{ height: subtitleTrackHeight + 'px' }" @mousedown="handleTrackMouseDown">
             <div
               v-for="subtitle in subtitles"
               :key="subtitle.id"
               class="subtitle-block"
               :class="{
                 'is-dragging': draggingSubtitle?.id === subtitle.id || draggingSelectedSubtitles.some(s => s.id === subtitle.id),
-                'is-active': currentSubtitleId === subtitle.id,
-                'is-selected': selectedSubtitleIds.has(subtitle.id)
+                'is-active': props.currentSubtitleId === subtitle.id,
+                'is-selected': selectedSubtitleIds.has(subtitle.id),
+                'scissor-mode': props.scissorMode
               }"
               :style="getSubtitleStyle(subtitle)"
               @mousedown="handleSubtitleMouseDown($event, subtitle)"
@@ -91,6 +92,16 @@
             <div class="playhead-line"></div>
             <div class="playhead-handle"></div>
           </div>
+
+          <!-- 剪刀参考线 -->
+          <div
+            v-if="props.scissorMode && scissorLineX !== null"
+            class="scissor-line"
+            :style="{ left: scissorLineX + 'px' }"
+          >
+            <div class="scissor-line-bar"></div>
+            <div class="scissor-icon">✂</div>
+          </div>
         </div>
       </div>
     </div>
@@ -110,6 +121,8 @@ interface Props {
   subtitles?: SubtitleEntry[]
   isGeneratingWaveform?: boolean
   waveformProgress?: number
+  currentSubtitleId?: number | null
+  scissorMode?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -117,7 +130,9 @@ const props = withDefaults(defineProps<Props>(), {
   duration: 0,
   subtitles: () => [],
   isGeneratingWaveform: false,
-  waveformProgress: 0
+  waveformProgress: 0,
+  currentSubtitleId: null,
+  scissorMode: false
 })
 
 // 计算属性，用于调试
@@ -127,6 +142,7 @@ const emit = defineEmits<{
   updateSubtitles: [updates: Array<{ id: number; startTime: TimeStamp; endTime: TimeStamp }>]
   selectSubtitles: [ids: number[]]
   doubleClickSubtitle: [id: number]
+  splitSubtitle: [id: number, splitTimeMs: number]
 }>()
 
 // Refs
@@ -174,6 +190,9 @@ const dragStartX = ref(0)
 const dragStartTime = ref(0)
 const dragStartTimes = ref<Map<number, number>>(new Map()) // 批量拖拽时每个字幕的起始时间
 const currentSubtitleId = ref<number | null>(null)
+
+// 剪刀模式参考线位置
+const scissorLineX = ref<number | null>(null)
 
 // Helper: Time to pixel position
 const timeToPixel = (time: number): number => {
@@ -593,6 +612,24 @@ const handleSubtitleMouseDown = (event: MouseEvent, subtitle: SubtitleEntry) => 
     return
   }
 
+  // 剪刀模式：分割字幕
+  if (props.scissorMode) {
+    event.preventDefault()
+    event.stopPropagation()
+
+    // 计算点击位置对应的时间
+    if (!trackAreaRef.value) return
+
+    const trackRect = trackAreaRef.value.getBoundingClientRect()
+    const clickX = event.clientX - trackRect.left + trackAreaRef.value.scrollLeft
+    const clickTime = pixelToTime(clickX)
+    const clickTimeMs = clickTime * 1000
+
+    // 发送分割事件
+    emit('splitSubtitle', subtitle.id, clickTimeMs)
+    return
+  }
+
   // 处理多选
   if (event.shiftKey) {
     // Shift+点击：切换选择状态
@@ -850,6 +887,29 @@ watch(() => props.currentTime, (time) => {
   }
 })
 
+// 剪刀模式鼠标移动处理
+const handleScissorMouseMove = (event: MouseEvent) => {
+  if (!props.scissorMode || !trackAreaRef.value) {
+    scissorLineX.value = null
+    return
+  }
+
+  const trackRect = trackAreaRef.value.getBoundingClientRect()
+  const mouseX = event.clientX - trackRect.left + trackAreaRef.value.scrollLeft
+
+  // 确保在有效范围内
+  if (mouseX >= 0 && mouseX <= timelineWidth.value) {
+    scissorLineX.value = mouseX
+  } else {
+    scissorLineX.value = null
+  }
+}
+
+// 剪刀模式鼠标离开处理
+const handleScissorMouseLeave = () => {
+  scissorLineX.value = null
+}
+
 onMounted(() => {
   initWaveSurfer()
 
@@ -874,6 +934,20 @@ onUnmounted(() => {
   document.removeEventListener('mouseup', handleResizeEnd)
   document.removeEventListener('mousemove', handleSelectionMove)
   document.removeEventListener('mouseup', handleSelectionEnd)
+})
+
+// 监听剪刀模式变化
+watch(() => props.scissorMode, (isScissorMode) => {
+  if (isScissorMode) {
+    // 进入剪刀模式，添加鼠标移动监听
+    trackAreaRef.value?.addEventListener('mousemove', handleScissorMouseMove)
+    trackAreaRef.value?.addEventListener('mouseleave', handleScissorMouseLeave)
+  } else {
+    // 退出剪刀模式，移除监听并隐藏参考线
+    trackAreaRef.value?.removeEventListener('mousemove', handleScissorMouseMove)
+    trackAreaRef.value?.removeEventListener('mouseleave', handleScissorMouseLeave)
+    scissorLineX.value = null
+  }
 })
 
 // Expose methods to parent component
@@ -1227,5 +1301,55 @@ defineExpose({
   pointer-events: none;
   z-index: 5;
   border-radius: 4px;
+}
+
+/* 剪刀模式 - 使用竖着的剪刀光标（通过 g transform 旋转） */
+.subtitle-track.scissor-mode {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cg transform='rotate(90 12 12)'%3E%3Cpath fill='%23f56c6c' d='M9.64 7.64c.23-.5.36-1.05.36-1.64c0-2.21-1.79-4-4-4S2 3.79 2 6s1.79 4 4 4c.59 0 1.14-.13 1.64-.36L10 12l-2.36 2.36C7.14 14.13 6.59 14 6 14c-2.21 0-4 1.79-4 4s1.79 4 4 4s4-1.79 4-4c0-.59-.13-1.14-.36-1.64L12 14l7 7h3v-1L9.64 7.64zM6 8c-1.1 0-2-.89-2-2s.9-2 2-2s2 .89 2 2s-.9 2-2 2zm0 12c-1.1 0-2-.89-2-2s.9-2 2-2s2 .89 2 2s-.9 2-2 2zm6-7.5c-.28 0-.5-.22-.5-.5s.22-.5.5-.5s.5.22.5.5s-.22.5-.5.5zM19 3l-6 6l2 2l7-7V3h-3z'/%3E%3C/g%3E%3C/svg%3E") 12 12, crosshair;
+}
+
+.subtitle-block.scissor-mode {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cg transform='rotate(90 12 12)'%3E%3Cpath fill='%23f56c6c' d='M9.64 7.64c.23-.5.36-1.05.36-1.64c0-2.21-1.79-4-4-4S2 3.79 2 6s1.79 4 4 4c.59 0 1.14-.13 1.64-.36L10 12l-2.36 2.36C7.14 14.13 6.59 14 6 14c-2.21 0-4 1.79-4 4s1.79 4 4 4s4-1.79 4-4c0-.59-.13-1.14-.36-1.64L12 14l7 7h3v-1L9.64 7.64zM6 8c-1.1 0-2-.89-2-2s.9-2 2-2s2 .89 2 2s-.9 2-2 2zm0 12c-1.1 0-2-.89-2-2s.9-2 2-2s2 .89 2 2s-.9 2-2 2zm6-7.5c-.28 0-.5-.22-.5-.5s.22-.5.5-.5s.5.22.5.5s-.22.5-.5.5zM19 3l-6 6l2 2l7-7V3h-3z'/%3E%3C/g%3E%3C/svg%3E") 12 12, crosshair;
+}
+
+.subtitle-block.scissor-mode:hover {
+  border-color: #f56c6c;
+  box-shadow: 0 2px 8px rgba(245, 108, 108, 0.4);
+}
+
+/* 剪刀参考线 */
+.scissor-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  pointer-events: none;
+  z-index: 100;
+  transform: translateX(-1px);
+}
+
+.scissor-line-bar {
+  position: absolute;
+  top: 30px;
+  bottom: 0;
+  width: 2px;
+  background: repeating-linear-gradient(
+    to bottom,
+    #f56c6c 0px,
+    #f56c6c 4px,
+    transparent 4px,
+    transparent 8px
+  );
+  box-shadow: 0 0 4px rgba(245, 108, 108, 0.4);
+}
+
+.scissor-icon {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%) rotate(90deg);
+  font-size: 18px;
+  color: #f56c6c;
+  text-shadow: 0 0 4px rgba(245, 108, 108, 0.6);
 }
 </style>
