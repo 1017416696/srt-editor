@@ -11,6 +11,7 @@ export const useConfigStore = defineStore('config', () => {
     showKeyboardHints: true,
     theme: 'light',
     language: 'zh-CN',
+    newSubtitleDuration: 3,
   })
 
   // 快捷键绑定

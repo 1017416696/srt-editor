@@ -9,6 +9,7 @@ import type {
 } from '@/types/subtitle'
 import { HistoryActionType } from '@/types/subtitle'
 import { timeStampToMs, getDuration } from '@/utils/time'
+import { useConfigStore } from '@/stores/config'
 
 export const useSubtitleStore = defineStore('subtitle', () => {
   // 状态
@@ -328,8 +329,9 @@ export const useSubtitleStore = defineStore('subtitle', () => {
 
   // 新增字幕
   const addEntry = (afterId?: number) => {
-    // 默认时长 3 秒
-    const DEFAULT_DURATION_MS = 3000
+    // 从配置获取新增字幕时长（秒转毫秒）
+    const configStore = useConfigStore()
+    const DEFAULT_DURATION_MS = configStore.config.newSubtitleDuration * 1000
 
     // 辅助函数：毫秒转时间戳
     const msToTimeStamp = (ms: number): TimeStamp => {

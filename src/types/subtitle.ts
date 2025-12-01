@@ -91,6 +91,7 @@ export interface EditorConfig {
   showKeyboardHints: boolean // 显示快捷键提示
   theme: 'light' | 'dark' // 主题
   language: 'zh-CN' | 'en-US' // 界面语言
+  newSubtitleDuration: number // 新增字幕默认时长(秒)
 }
 
 /**

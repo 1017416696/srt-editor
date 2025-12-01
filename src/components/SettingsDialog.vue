@@ -146,6 +146,24 @@ const appVersion = '0.0.4'
                     @change="configStore.saveConfig()"
                   />
                 </div>
+
+                <div class="setting-item">
+                  <div class="setting-info">
+                    <span class="setting-label">新增字幕时长</span>
+                    <span class="setting-desc">新增字幕的默认持续时间</span>
+                  </div>
+                  <div class="duration-control">
+                    <el-slider
+                      v-model="configStore.config.newSubtitleDuration"
+                      :min="1"
+                      :max="10"
+                      :step="0.5"
+                      :show-tooltip="false"
+                      @change="configStore.saveConfig()"
+                    />
+                    <span class="duration-value">{{ configStore.config.newSubtitleDuration }}s</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -335,6 +353,25 @@ const appVersion = '0.0.4'
 .setting-desc {
   font-size: 12px;
   color: #999;
+}
+
+/* 时长控制 */
+.duration-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 140px;
+}
+
+.duration-control .el-slider {
+  flex: 1;
+}
+
+.duration-value {
+  font-size: 13px;
+  color: #666;
+  min-width: 32px;
+  text-align: right;
 }
 
 /* 快捷键列表 */
