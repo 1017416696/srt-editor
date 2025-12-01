@@ -1030,7 +1030,7 @@ const handleKeydown = (e: KeyboardEvent) => {
     audioStore.togglePlay()
   } else if (shortcuts.addEntry === pressedKey) {
     e.preventDefault()
-    handleAddEntry()
+    openSubtitle()
   } else if (shortcuts.deleteEntry === pressedKey) {
     e.preventDefault()
     handleDeleteEntry()
