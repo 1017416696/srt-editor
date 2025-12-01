@@ -4,7 +4,7 @@ mod waveform_generator;
 use srt_parser::{read_srt_file, write_srt_file, SRTFile, SubtitleEntry};
 use waveform_generator::{generate_waveform_with_progress, ProgressCallback};
 use std::fs;
-use tauri::menu::{MenuBuilder, PredefinedMenuItem, SubmenuBuilder};
+use tauri::menu::{MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 use tauri_plugin_prevent_default::Flags;
 
@@ -115,7 +115,7 @@ fn update_recent_files_menu(app_handle: tauri::AppHandle, files: Vec<RecentFileI
         // 重建整个菜单
         #[cfg(target_os = "macos")]
         {
-            use tauri::menu::PredefinedMenuItem;
+            use tauri::menu::{MenuItem, PredefinedMenuItem};
             
             let app_menu = SubmenuBuilder::new(&app_handle, "SRT Editor")
                 .text("about", "关于 SRT Editor")
@@ -124,12 +124,15 @@ fn update_recent_files_menu(app_handle: tauri::AppHandle, files: Vec<RecentFileI
                 .build()
                 .map_err(|e| e.to_string())?;
 
+            let open_item = MenuItem::with_id(&app_handle, "open", "打开", true, Some("CmdOrCtrl+O")).map_err(|e| e.to_string())?;
+            let save_item = MenuItem::with_id(&app_handle, "save", "保存", true, Some("CmdOrCtrl+S")).map_err(|e| e.to_string())?;
+            let close_item = MenuItem::with_id(&app_handle, "close", "关闭窗口", true, Some("CmdOrCtrl+W")).map_err(|e| e.to_string())?;
             let file_menu = SubmenuBuilder::new(&app_handle, "文件")
-                .text("open", "打开\t⌘ O")
+                .item(&open_item)
                 .item(&recent_menu)
-                .text("save", "保存\t⌘ S")
+                .item(&save_item)
                 .separator()
-                .text("close", "关闭窗口")
+                .item(&close_item)
                 .build()
                 .map_err(|e| e.to_string())?;
 
@@ -160,14 +163,17 @@ fn update_recent_files_menu(app_handle: tauri::AppHandle, files: Vec<RecentFileI
 
         #[cfg(target_os = "windows")]
         {
-            use tauri::menu::PredefinedMenuItem;
+            use tauri::menu::{MenuItem, PredefinedMenuItem};
             
+            let open_item = MenuItem::with_id(&app_handle, "open", "打开", true, Some("CmdOrCtrl+O")).map_err(|e| e.to_string())?;
+            let save_item = MenuItem::with_id(&app_handle, "save", "保存", true, Some("CmdOrCtrl+S")).map_err(|e| e.to_string())?;
+            let close_item = MenuItem::with_id(&app_handle, "close", "关闭窗口", true, Some("CmdOrCtrl+W")).map_err(|e| e.to_string())?;
             let file_menu = SubmenuBuilder::new(&app_handle, "文件")
-                .text("open", "打开\tCtrl+O")
+                .item(&open_item)
                 .item(&recent_menu)
-                .text("save", "保存\tCtrl+S")
+                .item(&save_item)
                 .separator()
-                .text("close", "关闭窗口")
+                .item(&close_item)
                 .build()
                 .map_err(|e| e.to_string())?;
 
@@ -252,12 +258,15 @@ pub fn run() {
                     .build()?;
 
                 // 创建 文件 菜单（macOS 使用 Cmd）
+                let open_item = MenuItem::with_id(app, "open", "打开", true, Some("CmdOrCtrl+O"))?;
+                let save_item = MenuItem::with_id(app, "save", "保存", true, Some("CmdOrCtrl+S"))?;
+                let close_item = MenuItem::with_id(app, "close", "关闭窗口", true, Some("CmdOrCtrl+W"))?;
                 let file_menu = SubmenuBuilder::new(app, "文件")
-                    .text("open", "打开\t⌘ O")
+                    .item(&open_item)
                     .item(&recent_menu)
-                    .text("save", "保存\t⌘ S")
+                    .item(&save_item)
                     .separator()
-                    .text("close", "关闭窗口")
+                    .item(&close_item)
                     .build()?;
 
                 // 创建 编辑 菜单（macOS 使用 Cmd）- 使用预定义菜单项以支持系统快捷键
@@ -296,12 +305,15 @@ pub fn run() {
                     .build()?;
 
                 // 创建 文件 菜单（Windows 使用 Ctrl）
+                let open_item = MenuItem::with_id(app, "open", "打开", true, Some("CmdOrCtrl+O"))?;
+                let save_item = MenuItem::with_id(app, "save", "保存", true, Some("CmdOrCtrl+S"))?;
+                let close_item = MenuItem::with_id(app, "close", "关闭窗口", true, Some("CmdOrCtrl+W"))?;
                 let file_menu = SubmenuBuilder::new(app, "文件")
-                    .text("open", "打开\tCtrl+O")
+                    .item(&open_item)
                     .item(&recent_menu)
-                    .text("save", "保存\tCtrl+S")
+                    .item(&save_item)
                     .separator()
-                    .text("close", "关闭窗口")
+                    .item(&close_item)
                     .build()?;
 
                 // 创建 编辑 菜单（Windows 使用 Ctrl）- 使用预定义菜单项以支持系统快捷键
@@ -353,6 +365,11 @@ pub fn run() {
                                 })();
                             "#;
                             let _ = window.eval(js_code);
+                        }
+                    }
+                    "close" => {
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let _ = window.close();
                         }
                     }
                     "batch-add-cjk-spaces" => {
