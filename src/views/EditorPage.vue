@@ -11,7 +11,7 @@ import { useConfigStore } from '@/stores/config'
 import { timeStampToMs } from '@/utils/time'
 import type { SRTFile, AudioFile, TimeStamp } from '@/types/subtitle'
 import WaveformViewer from '@/components/WaveformViewer.vue'
-import { DocumentCopy, VideoPlay, Delete, PriceTag, Document, Setting, Plus, Scissor } from '@element-plus/icons-vue'
+import { DocumentCopy, VideoPlay, Delete, PriceTag, Document, Setting, Plus, Scissor, Search, ArrowDown, Switch } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 // Debounce helper function
@@ -52,6 +52,23 @@ const subtitleItemRefs: Record<number, HTMLElement | null> = {}
 const isUserEditing = ref(false) // 标记是否是用户在编辑
 const isUserSelectingEntry = ref(false) // 标记用户是否在手动选择字幕
 const isScissorMode = ref(false) // 剪刀模式：分割字幕
+const showSearchPanel = ref(false) // 是否显示搜索面板
+const activePanel = ref<'list' | 'search'>('list') // 当前激活的面板
+
+// 切换搜索面板
+const toggleSearchPanel = () => {
+  showSearchPanel.value = !showSearchPanel.value
+  if (showSearchPanel.value) {
+    nextTick(() => {
+      searchInputRef.value?.focus()
+    })
+  } else {
+    // 关闭时清空搜索
+    searchText.value = ''
+    replaceText.value = ''
+    showReplace.value = false
+  }
+}
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null // 用于记录防抖计时器
 let userSelectionTimer: ReturnType<typeof setTimeout> | null = null // 用于记录用户选择的计时器
 let isSaving = false // 防止保存重复触发
@@ -1141,24 +1158,21 @@ const handleKeydown = (e: KeyboardEvent) => {
       e.preventDefault()
       handleOpenFile()
     } else if (shortcuts.find === pressedKey) {
-      // 如果在搜索输入框内按 Cmd+F/Ctrl+F，保持焦点不变
+      // 在任意输入框内按 Cmd+F/Ctrl+F，打开搜索面板并聚焦
       e.preventDefault()
+      showSearchPanel.value = true
+      nextTick(() => {
+        searchInputRef.value?.focus()
+      })
     } else if (e.key === 'Escape') {
-      // 在输入框内按 ESC 时，清除搜索和替换文本并失焦
+      // 在搜索/替换输入框内按 ESC 时，关闭搜索面板
       e.preventDefault()
-      if (isInSearchInput) {
-        // 当搜索和替换框都有内容时，同时清空两个输入框
-        if (searchText.value && replaceText.value) {
-          searchText.value = ''
-          replaceText.value = ''
-        } else {
-          searchText.value = ''
-        }
-        searchInputRef.value?.blur()
-      } else if (isInReplaceInput) {
-        // 在替换框按 ESC 时，清空搜索和替换框
+      if (isInSearchInput || isInReplaceInput) {
         searchText.value = ''
         replaceText.value = ''
+        showReplace.value = false
+        showSearchPanel.value = false
+        searchInputRef.value?.blur()
         replaceInputRef.value?.blur()
       }
     } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && isInSearchInput) {
@@ -1180,22 +1194,20 @@ const handleKeydown = (e: KeyboardEvent) => {
     e.preventDefault()
     handleOpenFile()
   } else if (shortcuts.find === pressedKey) {
-    // Command+F 或 Ctrl+F：聚焦搜索输入框
+    // Command+F 或 Ctrl+F：打开搜索面板并聚焦搜索输入框
     e.preventDefault()
-    if (searchInputRef.value) {
-      nextTick(() => {
-        searchInputRef.value?.focus()
-      })
-    }
+    showSearchPanel.value = true
+    nextTick(() => {
+      searchInputRef.value?.focus()
+    })
   } else if (pressedKey === 'Cmd+r' || pressedKey === 'Ctrl+r') {
-    // Command+R 或 Ctrl+R：展示替换框并聚焦搜索输入框
+    // Command+R 或 Ctrl+R：打开搜索面板、展示替换框并聚焦搜索输入框
     e.preventDefault()
+    showSearchPanel.value = true
     showReplace.value = true
-    if (searchInputRef.value) {
-      nextTick(() => {
-        searchInputRef.value?.focus()
-      })
-    }
+    nextTick(() => {
+      searchInputRef.value?.focus()
+    })
   } else if (shortcuts.copy === pressedKey) {
     // Command+C 或 Ctrl+C：复制当前选中字幕
     e.preventDefault()
@@ -1239,17 +1251,16 @@ const handleKeydown = (e: KeyboardEvent) => {
   <div class="editor-page">
     <!-- 标题栏区域（可拖拽） -->
     <div class="titlebar" @mousedown.left="onTitlebarMousedown">
-      <!-- 左侧字幕按钮（紧贴红绿灯右侧） -->
-      <button class="subtitle-btn" @click="openSubtitle" @mousedown.stop title="添加字幕">
-        <el-icon><Plus /></el-icon>
-      </button>
-      <button class="scissor-btn" :class="{ active: isScissorMode }" @click="handleScissor" @mousedown.stop title="分割字幕">
+      <button
+        class="scissor-btn"
+        :class="{ active: isScissorMode }"
+        @click="handleScissor"
+        @mousedown.stop
+        title="分割字幕"
+      >
         <el-icon><Scissor /></el-icon>
       </button>
       <span class="titlebar-title">SRT 字幕编辑器</span>
-      <button class="settings-btn" @click="openSettings" @mousedown.stop>
-        <el-icon><Setting /></el-icon>
-      </button>
     </div>
 
     <!-- 时间轴区域：顶部全宽 -->
@@ -1348,19 +1359,42 @@ const handleKeydown = (e: KeyboardEvent) => {
 
     <!-- 主内容区：左右分栏 -->
     <div class="content-area">
+      <!-- 左侧侧边栏：图标导航 -->
+      <div class="sidebar">
+        <div class="sidebar-top">
+          <button
+            class="sidebar-btn"
+            @click="openSubtitle"
+            title="添加字幕"
+          >
+            <el-icon><Plus /></el-icon>
+          </button>
+          <button
+            class="sidebar-btn"
+            :class="{ active: showSearchPanel }"
+            @click="toggleSearchPanel"
+            title="搜索字幕"
+          >
+            <el-icon><Search /></el-icon>
+          </button>
+        </div>
+        <div class="sidebar-bottom">
+          <button
+            class="sidebar-btn"
+            @click="openSettings"
+            title="设置"
+          >
+            <el-icon><Setting /></el-icon>
+          </button>
+        </div>
+      </div>
+
       <!-- 左侧：字幕列表 -->
       <div class="subtitle-list-panel">
         <!-- 搜索和替换框 -->
-        <div class="search-replace-container">
+        <div v-if="showSearchPanel" class="search-replace-container">
           <!-- 搜索框 -->
           <div class="search-row">
-            <button
-              class="toggle-btn"
-              @click="showReplace = !showReplace"
-              :title="showReplace ? '隐藏替换' : '显示替换'"
-            >
-              {{ showReplace ? '▼' : '▶' }}
-            </button>
             <el-input
               ref="searchInputRef"
               v-model="searchText"
@@ -1368,15 +1402,26 @@ const handleKeydown = (e: KeyboardEvent) => {
               clearable
               class="search-input"
               size="small"
-            />
+            >
+              <template #prefix>
+                <el-icon class="search-icon"><Search /></el-icon>
+              </template>
+            </el-input>
             <span v-if="searchText && subtitleStore.searchResults.length > 0" class="match-count">
               {{ subtitleStore.searchResults.length }}
             </span>
+            <button
+              class="expand-btn"
+              :class="{ expanded: showReplace }"
+              @click="showReplace = !showReplace"
+              :title="showReplace ? '收起替换' : '展开替换'"
+            >
+              <el-icon><ArrowDown /></el-icon>
+            </button>
           </div>
 
           <!-- 替换框 -->
           <div v-if="showReplace" class="replace-row">
-            <div class="replace-spacer"></div>
             <el-input
               ref="replaceInputRef"
               v-model="replaceText"
@@ -1384,12 +1429,16 @@ const handleKeydown = (e: KeyboardEvent) => {
               clearable
               class="replace-input"
               size="small"
-            />
+            >
+              <template #prefix>
+                <el-icon class="replace-icon"><Switch /></el-icon>
+              </template>
+            </el-input>
             <button
               class="replace-btn"
               @click="replaceOne"
               :disabled="!searchText || subtitleStore.searchResults.length === 0"
-              title="替换当前项，然后跳到下一个"
+              title="替换当前"
             >
               替换
             </button>
@@ -1399,7 +1448,7 @@ const handleKeydown = (e: KeyboardEvent) => {
               :disabled="!searchText"
               title="全部替换"
             >
-              全部替换
+              全部
             </button>
           </div>
         </div>
@@ -1760,9 +1809,115 @@ const handleKeydown = (e: KeyboardEvent) => {
   overflow: hidden;
 }
 
+/* 左侧侧边栏 */
+.sidebar {
+  width: 48px;
+  background: #ffffff;
+  border-right: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  flex-shrink: 0;
+}
+
+.sidebar-top,
+.sidebar-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.sidebar-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.sidebar-btn .el-icon {
+  font-size: 20px;
+  color: #9ca3af;
+  transition: color 0.2s ease;
+}
+
+.sidebar-btn:hover {
+  background: #f3f4f6;
+}
+
+.sidebar-btn:hover .el-icon {
+  color: #6b7280;
+}
+
+.sidebar-btn.active {
+  background: #eff6ff;
+}
+
+.sidebar-btn.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 24px;
+  background: #3b82f6;
+  border-radius: 0 2px 2px 0;
+}
+
+.sidebar-btn.active .el-icon {
+  color: #3b82f6;
+}
+
+/* 剪刀按钮（标题栏） */
+.scissor-btn {
+  position: absolute;
+  left: 80px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+  transition: all 0.2s ease;
+}
+
+.scissor-btn:hover .el-icon {
+  color: #409eff;
+}
+
+.scissor-btn.active {
+  background: #409eff;
+}
+
+.scissor-btn.active .el-icon {
+  color: #fff;
+}
+
+.scissor-btn .el-icon {
+  font-size: 16px;
+  color: #666;
+  pointer-events: none;
+}
+
 /* 左侧字幕列表 */
 .subtitle-list-panel {
-  width: 450px;
+  width: 400px;
   background: white;
   border-right: 1px solid #e5e7eb;
   display: flex;
@@ -1787,26 +1942,49 @@ const handleKeydown = (e: KeyboardEvent) => {
   margin-bottom: 0;
 }
 
-.toggle-btn {
-  width: 2rem;
-  height: 2rem;
+/* 搜索图标 */
+.search-icon,
+.replace-icon {
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+/* 展开/收起按钮 */
+.expand-btn {
+  width: 28px;
+  height: 28px;
   padding: 0;
-  border: none;
-  background: transparent;
-  color: #606266;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  color: #6b7280;
   cursor: pointer;
-  font-size: 1rem;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  border-radius: 0.25rem;
-  transition: all 0.2s;
+  border-radius: 0.375rem;
+  transition: all 0.2s ease;
 }
 
-.toggle-btn:hover {
-  color: #409eff;
-  background: #f0f9ff;
+.expand-btn:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  color: #374151;
+}
+
+.expand-btn .el-icon {
+  font-size: 14px;
+  transition: transform 0.2s ease;
+}
+
+.expand-btn.expanded {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
+.expand-btn.expanded .el-icon {
+  transform: rotate(180deg);
 }
 
 .search-input {
@@ -1851,11 +2029,6 @@ const handleKeydown = (e: KeyboardEvent) => {
   align-items: center;
   gap: 0.5rem;
   margin-top: 0.5rem;
-}
-
-.replace-spacer {
-  width: 2rem;
-  flex-shrink: 0;
 }
 
 .replace-input {
@@ -2417,97 +2590,6 @@ mark {
   pointer-events: none;
 }
 
-/* 设置按钮 */
-.settings-btn {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 26px;
-  height: 26px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
-}
 
-.settings-btn:hover .el-icon {
-  color: #409eff;
-}
-
-.settings-btn .el-icon {
-  font-size: 16px;
-  color: #666;
-  pointer-events: none;
-}
-
-/* 字幕按钮（紧贴红绿灯右侧） */
-.subtitle-btn {
-  position: absolute;
-  left: 80px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 26px;
-  height: 26px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
-}
-
-.subtitle-btn:hover .el-icon {
-  color: #409eff;
-}
-
-.subtitle-btn .el-icon {
-  font-size: 16px;
-  color: #666;
-  pointer-events: none;
-}
-
-/* 剪刀按钮（紧贴添加按钮右侧） */
-.scissor-btn {
-  position: absolute;
-  left: 106px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 26px;
-  height: 26px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
-}
-
-.scissor-btn:hover .el-icon {
-  color: #409eff;
-}
-
-.scissor-btn.active {
-  background: #409eff;
-  border-radius: 4px;
-}
-
-.scissor-btn.active .el-icon {
-  color: #fff;
-}
-
-.scissor-btn .el-icon {
-  font-size: 16px;
-  color: #666;
-  pointer-events: none;
-}
 
 </style>
