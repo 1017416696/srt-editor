@@ -423,10 +423,27 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     return newId
   }
 
+  // 移除标点符号的辅助函数
+  const removePunctuationFromText = (text: string): string => {
+    // 移除中文标点和英文标点
+    return text.replace(/[，。！？、；：""''（）《》【】…—,.!?;:'"()\[\]{}]/g, '')
+  }
+
+  // 为单条字幕移除标点符号
+  const removePunctuationForEntry = (entryId: number) => {
+    const entry = entries.value.find((e) => e.id === entryId)
+    if (!entry) return
+
+    const newText = removePunctuationFromText(entry.text)
+    if (newText !== entry.text) {
+      updateEntryText(entryId, newText)
+    }
+  }
+
   // 批量去除标点符号
   const removePunctuation = () => {
     entries.value.forEach((entry) => {
-      entry.text = entry.text.replace(/[，。！？、；：""''（）《》【】…—]/g, '')
+      entry.text = removePunctuationFromText(entry.text)
     })
 
     addHistory({
@@ -629,6 +646,7 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     splitEntry,
     addEntry,
     removePunctuation,
+    removePunctuationForEntry,
     removeHTMLTags,
     addSpacesForEntry,
     addSpacesBetweenCJKAndAlphanumeric,

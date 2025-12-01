@@ -144,6 +144,7 @@ pub fn run() {
                     .separator()
                     .text("batch-add-cjk-spaces", "批量添加中英文空格")
                     .text("batch-remove-html", "批量移除HTML标签")
+                    .text("batch-remove-punctuation", "批量删除标点符号")
                     .build()?;
 
                 // 创建菜单：应用菜单 -> File -> Edit
@@ -179,6 +180,7 @@ pub fn run() {
                     .separator()
                     .text("batch-add-cjk-spaces", "批量添加中英文空格")
                     .text("batch-remove-html", "批量移除HTML标签")
+                    .text("batch-remove-punctuation", "批量删除标点符号")
                     .build()?;
 
                 // 创建菜单：File -> Edit
@@ -235,6 +237,18 @@ pub fn run() {
                                 (async () => {
                                     if (window.__globalBatchRemoveHTML && typeof window.__globalBatchRemoveHTML === 'function') {
                                         await window.__globalBatchRemoveHTML();
+                                    }
+                                })();
+                            "#;
+                            let _ = window.eval(js_code);
+                        }
+                    }
+                    "batch-remove-punctuation" => {
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let js_code = r#"
+                                (async () => {
+                                    if (window.__globalBatchRemovePunctuation && typeof window.__globalBatchRemovePunctuation === 'function') {
+                                        await window.__globalBatchRemovePunctuation();
                                     }
                                 })();
                             "#;

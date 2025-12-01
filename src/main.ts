@@ -102,11 +102,29 @@ const globalBatchRemoveHTML = async () => {
   }
 }
 
+// 全局批量删除标点符号函数
+const globalBatchRemovePunctuation = async () => {
+  try {
+    const { useSubtitleStore } = await import('./stores/subtitle')
+    const store = useSubtitleStore()
+    if (store.entries.length === 0) {
+      return
+    }
+    store.removePunctuation()
+    if (store.currentFilePath) {
+      await store.saveToFile()
+    }
+  } catch (error) {
+    // 处理失败，静默处理
+  }
+}
+
 // 将全局函数暴露到 window 对象
 ;(window as any).__globalOpenFile = globalOpenFile
 ;(window as any).__globalSaveFile = globalSaveFile
 ;(window as any).__globalBatchAddCJKSpaces = globalBatchAddCJKSpaces
 ;(window as any).__globalBatchRemoveHTML = globalBatchRemoveHTML
+;(window as any).__globalBatchRemovePunctuation = globalBatchRemovePunctuation
 
 // 全局菜单事件监听器（在应用启动时注册）
 listen<void>('menu:open-file', async () => {

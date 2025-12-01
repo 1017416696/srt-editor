@@ -596,6 +596,19 @@ const handleAddCJKSpaces = () => {
   editingText.value = currentEntry.value.text
 }
 
+// 为当前字幕删除标点符号
+const handleRemovePunctuation = () => {
+  if (!currentEntry.value) return
+
+  // 如果正在播放，暂停
+  if (audioStore.playerState.isPlaying) {
+    audioStore.pause()
+  }
+
+  subtitleStore.removePunctuationForEntry(currentEntry.value.id)
+  editingText.value = currentEntry.value.text
+}
+
 // 批量添加中英文空格（供菜单调用）
 const handleBatchAddCJKSpaces = async () => {
   // 如果正在播放，暂停
@@ -613,6 +626,29 @@ const handleBatchAddCJKSpaces = async () => {
     try {
       await subtitleStore.saveToFile()
       ElMessage.success({ message: '已批量添加中英文空格', duration: 1500 })
+    } catch (error) {
+      // 保存失败，静默处理
+    }
+  }
+}
+
+// 批量删除标点符号（供菜单调用）
+const handleBatchRemovePunctuation = async () => {
+  // 如果正在播放，暂停
+  if (audioStore.playerState.isPlaying) {
+    audioStore.pause()
+  }
+
+  subtitleStore.removePunctuation()
+  if (currentEntry.value) {
+    editingText.value = currentEntry.value.text
+  }
+
+  // 保存文件
+  if (subtitleStore.currentFilePath) {
+    try {
+      await subtitleStore.saveToFile()
+      ElMessage.success({ message: '已批量删除标点符号', duration: 1500 })
     } catch (error) {
       // 保存失败，静默处理
     }
@@ -1555,9 +1591,9 @@ const handleKeydown = (e: KeyboardEvent) => {
               <el-icon class="btn-icon"><Document /></el-icon>
               <span>中英文加空格</span>
             </el-button>
-            <el-button class="action-btn danger" type="danger" plain @click="handleDeleteEntry">
+            <el-button class="action-btn" @click="handleRemovePunctuation">
               <el-icon class="btn-icon"><Delete /></el-icon>
-              <span>删除字幕</span>
+              <span>删除标点</span>
             </el-button>
           </div>
         </div>
