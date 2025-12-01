@@ -1364,10 +1364,25 @@ const handleKeydown = (e: KeyboardEvent) => {
       />
     </div>
 
-    <!-- 音频加载占位符 -->
+    <!-- 音频加载占位符 - 优化空状态 -->
     <div v-else class="timeline-placeholder">
-      <span class="text-gray-500">未加载音频</span>
-      <el-button size="small" @click="handleOpenAudio">加载音频</el-button>
+      <div class="audio-empty-state">
+        <div class="audio-empty-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M9 18V5l12-2v13" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="6" cy="18" r="3"/>
+            <circle cx="18" cy="16" r="3"/>
+          </svg>
+        </div>
+        <div class="audio-empty-text">
+          <span class="audio-empty-title">加载音频以启用波形预览</span>
+          <span class="audio-empty-hint">支持 MP3、WAV、OGG、FLAC、M4A、AAC 格式</span>
+        </div>
+        <el-button type="primary" size="small" @click="handleOpenAudio" class="audio-load-btn">
+          <el-icon style="margin-right: 4px;"><Plus /></el-icon>
+          选择音频文件
+        </el-button>
+      </div>
     </div>
 
     <!-- 主内容区：左右分栏 -->
@@ -1563,74 +1578,77 @@ const handleKeydown = (e: KeyboardEvent) => {
       <div class="subtitle-edit-panel">
         <!-- 字幕编辑区 -->
         <div v-if="currentEntry" class="subtitle-edit-section">
+          <!-- 编辑头部 -->
           <div class="edit-header">
-            <h3 class="edit-title">字幕 #{{ currentEntry.id }}</h3>
+            <div class="edit-header-left">
+              <span class="edit-badge">#{{ currentEntry.id }}</span>
+              <h3 class="edit-title">编辑字幕</h3>
+            </div>
+            <button class="delete-entry-btn" @click="handleDeleteEntry" title="删除此字幕">
+              <el-icon><Delete /></el-icon>
+            </button>
           </div>
 
-          <!-- 时间编辑卡片 -->
-          <div class="time-edit-card">
-            <div class="time-fields-compact">
-              <!-- 开始时间 -->
-              <div class="time-control-group">
-                <label class="time-label">开始</label>
-                <div class="time-value-wrapper">
-                  <button class="time-btn" @click="adjustTime('start', -100)" title="向前移动 100ms">
-                    <span>−</span>
-                  </button>
-                  <el-input
-                    v-model="editingStartTime"
-                    class="time-input-compact"
-                    size="small"
-                    placeholder="00:00:00,000"
-                    @blur="() => handleTimeChange('start')"
-                    @keyup.enter="() => handleTimeChange('start')"
-                  />
-                  <button class="time-btn" @click="adjustTime('start', 100)" title="向后移动 100ms">
-                    <span>+</span>
-                  </button>
-                </div>
+          <!-- 时间设置 - 紧凑单行布局 -->
+          <div class="time-row">
+            <!-- 开始时间 -->
+            <div class="time-block">
+              <span class="time-label">开始</span>
+              <div class="time-control">
+                <button class="time-btn-sm" @click="adjustTime('start', -100)" title="-100ms">−</button>
+                <el-input
+                  v-model="editingStartTime"
+                  class="time-input-sm"
+                  size="small"
+                  @blur="() => handleTimeChange('start')"
+                  @keyup.enter="() => handleTimeChange('start')"
+                />
+                <button class="time-btn-sm" @click="adjustTime('start', 100)" title="+100ms">+</button>
               </div>
+            </div>
 
-              <div class="time-arrow-compact">→</div>
+            <span class="time-separator">→</span>
 
-              <!-- 结束时间 -->
-              <div class="time-control-group">
-                <label class="time-label">结束</label>
-                <div class="time-value-wrapper">
-                  <button class="time-btn" @click="adjustTime('end', -100)" title="向前移动 100ms">
-                    <span>−</span>
-                  </button>
-                  <el-input
-                    v-model="editingEndTime"
-                    class="time-input-compact"
-                    size="small"
-                    placeholder="00:00:00,000"
-                    @blur="() => handleTimeChange('end')"
-                    @keyup.enter="() => handleTimeChange('end')"
-                  />
-                  <button class="time-btn" @click="adjustTime('end', 100)" title="向后移动 100ms">
-                    <span>+</span>
-                  </button>
-                </div>
+            <!-- 结束时间 -->
+            <div class="time-block">
+              <span class="time-label">结束</span>
+              <div class="time-control">
+                <button class="time-btn-sm" @click="adjustTime('end', -100)" title="-100ms">−</button>
+                <el-input
+                  v-model="editingEndTime"
+                  class="time-input-sm"
+                  size="small"
+                  @blur="() => handleTimeChange('end')"
+                  @keyup.enter="() => handleTimeChange('end')"
+                />
+                <button class="time-btn-sm" @click="adjustTime('end', 100)" title="+100ms">+</button>
               </div>
+            </div>
 
-              <!-- 时长显示 -->
-              <div class="duration-display">
-                <label class="time-label">时长</label>
-                <div class="duration-value">
-                  {{ `00:${String(Math.floor((subtitleStore.formatTimeStamp(currentEntry.endTime).slice(6, 8) as any) - (subtitleStore.formatTimeStamp(currentEntry.startTime).slice(6, 8) as any))).padStart(2, '0')},000` }}
-                </div>
-              </div>
+            <!-- 时长 -->
+            <div class="time-block duration-block">
+              <span class="time-label">时长</span>
+              <span class="duration-value-sm">
+                {{ `00:${String(Math.floor((subtitleStore.formatTimeStamp(currentEntry.endTime).slice(6, 8) as any) - (subtitleStore.formatTimeStamp(currentEntry.startTime).slice(6, 8) as any))).padStart(2, '0')},000` }}
+              </span>
             </div>
           </div>
 
-          <!-- 文本编辑卡片 -->
+          <!-- 文本编辑卡片 - 重新设计 -->
           <div class="text-edit-card">
-            <div class="card-header">
-              <span class="card-title">字幕文本</span>
-              <span class="text-count">{{ editingText.length }} 字</span>
+            <div class="text-card-header">
+              <div class="text-header-left">
+                <svg class="text-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14,2 14,8 20,8"/>
+                  <line x1="16" y1="13" x2="8" y2="13"/>
+                  <line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+                <span class="text-card-title">字幕内容</span>
+              </div>
+              <span class="char-count">{{ editingText.length }} 字符</span>
             </div>
-            <div class="textarea-wrapper">
+            <div class="text-input-wrapper">
               <el-input
                 ref="textareaInputRef"
                 v-model="editingText"
@@ -1638,33 +1656,67 @@ const handleKeydown = (e: KeyboardEvent) => {
                 @focus="isUserEditing = true"
                 @blur="handleTextareaBlur"
                 @input="handleTextInput"
-                class="text-input"
+                class="text-input-new"
               />
             </div>
           </div>
 
-          <!-- 操作按钮卡片 -->
-          <div class="actions-card">
-            <el-button class="action-btn" @click="handleRemoveHTML">
-              <el-icon class="btn-icon"><PriceTag /></el-icon>
-              <span>移除HTML标签</span>
-            </el-button>
-            <el-button class="action-btn" @click="handleAddCJKSpaces">
-              <el-icon class="btn-icon"><Document /></el-icon>
-              <span>中英文加空格</span>
-            </el-button>
-            <el-button class="action-btn" @click="handleRemovePunctuation">
-              <el-icon class="btn-icon"><Delete /></el-icon>
-              <span>删除标点</span>
-            </el-button>
+          <!-- 快捷操作 - 重新设计 -->
+          <div class="quick-actions">
+            <span class="actions-label">快捷操作</span>
+            <div class="actions-group">
+              <button class="quick-action-btn" @click="handleRemoveHTML" title="移除HTML标签">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="4,7 4,4 20,4 20,7"/>
+                  <line x1="9" y1="20" x2="15" y2="20"/>
+                  <line x1="12" y1="4" x2="12" y2="20"/>
+                </svg>
+                <span>移除标签</span>
+              </button>
+              <button class="quick-action-btn" @click="handleAddCJKSpaces" title="中英文之间添加空格">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 6H3M21 12H3M21 18H3"/>
+                </svg>
+                <span>添加空格</span>
+              </button>
+              <button class="quick-action-btn" @click="handleRemovePunctuation" title="删除标点符号">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="15" y1="9" x2="9" y2="15"/>
+                  <line x1="9" y1="9" x2="15" y2="15"/>
+                </svg>
+                <span>删除标点</span>
+              </button>
+            </div>
           </div>
         </div>
 
-        <!-- 无选中状态 -->
+        <!-- 无选中状态 - 优化设计 -->
         <div v-else class="no-selection">
           <div class="no-selection-content">
-            <el-icon class="no-selection-icon"><Document /></el-icon>
-            <p class="no-selection-text">请从左侧选择一条字幕进行编辑</p>
+            <div class="no-selection-icon-wrapper">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14,2 14,8 20,8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+                <line x1="10" y1="9" x2="8" y2="9"/>
+              </svg>
+            </div>
+            <div class="no-selection-text-group">
+              <p class="no-selection-title">选择字幕开始编辑</p>
+              <p class="no-selection-hint">从左侧列表中点击任意字幕条目</p>
+            </div>
+            <div class="no-selection-shortcuts">
+              <div class="shortcut-item">
+                <kbd>↑</kbd><kbd>↓</kbd>
+                <span>切换字幕</span>
+              </div>
+              <div class="shortcut-item">
+                <kbd>⌘</kbd><kbd>N</kbd>
+                <span>新建字幕</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1698,10 +1750,66 @@ const handleKeydown = (e: KeyboardEvent) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 1rem;
-  padding: 2rem;
-  background: #f9fafb;
-  border-bottom: 1px solid #e5e7eb;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.audio-empty-state {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0.625rem 1.25rem;
+  background: white;
+  border-radius: 10px;
+  border: 1px dashed #cbd5e1;
+  transition: all 0.2s ease;
+}
+
+.audio-empty-state:hover {
+  border-color: #94a3b8;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.audio-empty-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-radius: 10px;
+  color: #3b82f6;
+  flex-shrink: 0;
+}
+
+.audio-empty-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.audio-empty-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.audio-empty-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.audio-empty-hint {
+  font-size: 0.6875rem;
+  color: #94a3b8;
+}
+
+.audio-load-btn {
+  padding: 0.375rem 0.875rem;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 0.8125rem;
 }
 
 /* 一体化控制栏：三栏布局（左、中、右）*/
@@ -1826,13 +1934,13 @@ const handleKeydown = (e: KeyboardEvent) => {
 
 /* 左侧侧边栏 */
 .sidebar {
-  width: 48px;
-  background: #ffffff;
-  border-right: 1px solid #e5e7eb;
+  width: 52px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border-right: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 0.5rem 0;
+  padding: 0.75rem 0;
   flex-shrink: 0;
 }
 
@@ -1845,35 +1953,36 @@ const handleKeydown = (e: KeyboardEvent) => {
 }
 
 .sidebar-btn {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
+  margin: 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
   border: none;
-  border-radius: 0.5rem;
+  border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
 }
 
 .sidebar-btn .el-icon {
-  font-size: 20px;
-  color: #9ca3af;
-  transition: color 0.2s ease;
+  font-size: 18px;
+  color: #94a3b8;
+  transition: all 0.2s ease;
 }
 
 .sidebar-btn:hover {
-  background: #f3f4f6;
+  background: #f1f5f9;
 }
 
 .sidebar-btn:hover .el-icon {
-  color: #6b7280;
+  color: #64748b;
 }
 
 .sidebar-btn.active {
-  background: #eff6ff;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
 }
 
 .sidebar-btn.active::before {
@@ -1883,9 +1992,9 @@ const handleKeydown = (e: KeyboardEvent) => {
   top: 50%;
   transform: translateY(-50%);
   width: 3px;
-  height: 24px;
-  background: #3b82f6;
-  border-radius: 0 2px 2px 0;
+  height: 20px;
+  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+  border-radius: 0 3px 3px 0;
 }
 
 .sidebar-btn.active .el-icon {
@@ -1933,8 +2042,8 @@ const handleKeydown = (e: KeyboardEvent) => {
 /* 左侧字幕列表 */
 .subtitle-list-panel {
   width: 400px;
-  background: white;
-  border-right: 1px solid #e5e7eb;
+  background: #f8fafc;
+  border-right: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
 }
@@ -2115,22 +2224,24 @@ const handleKeydown = (e: KeyboardEvent) => {
 
 .subtitle-item {
   padding: 0.75rem;
-  margin-bottom: 0.5rem;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.375rem;
+  margin-bottom: 0.375rem;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s ease;
 }
 
 .subtitle-item:hover {
-  background: #f3f4f6;
-  border-color: #d1d5db;
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
 .subtitle-item.is-selected {
-  background: #eff6ff;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
   border-color: #3b82f6;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.1);
 }
 
 .item-header {
@@ -2141,15 +2252,23 @@ const handleKeydown = (e: KeyboardEvent) => {
 }
 
 .item-number {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #6b7280;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+}
+
+.subtitle-item.is-selected .item-number {
+  background: rgba(59, 130, 246, 0.15);
+  color: #2563eb;
 }
 
 .item-time {
-  font-size: 0.75rem;
-  color: #9ca3af;
-  font-family: monospace;
+  font-size: 0.6875rem;
+  color: #94a3b8;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
 }
 
 .item-content {
@@ -2166,29 +2285,33 @@ const handleKeydown = (e: KeyboardEvent) => {
 }
 
 .item-text {
-  color: #333;
-  font-size: 0.875rem;
+  color: #334155;
+  font-size: 0.8125rem;
   line-height: 1.5;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.subtitle-item.is-selected .item-text {
+  color: #1e40af;
+}
+
 .list-footer {
-  padding: 0.6rem 1rem;
-  border-top: 1px solid #e5e7eb;
-  background: #f9fafb;
+  padding: 0.625rem 1rem;
+  border-top: 1px solid #e2e8f0;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   display: flex;
   align-items: center;
   justify-content: space-between;
   font-size: 0.75rem;
-  color: #6b7280;
+  color: #64748b;
   gap: 1rem;
 }
 
 .file-info {
-  color: #333;
-  font-weight: 500;
+  color: #334155;
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2196,11 +2319,11 @@ const handleKeydown = (e: KeyboardEvent) => {
   min-width: 0;
 }
 
-
 .count-info {
-  color: #6b7280;
+  color: #94a3b8;
   white-space: nowrap;
   flex-shrink: 0;
+  font-weight: 500;
 }
 
 .empty-state {
@@ -2210,12 +2333,14 @@ const handleKeydown = (e: KeyboardEvent) => {
   justify-content: center;
   height: 100%;
   gap: 1rem;
+  padding: 2rem;
+  text-align: center;
 }
 
 /* 右侧字幕编辑区 */
 .subtitle-edit-panel {
   flex: 1;
-  background: #f9fafb;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -2232,285 +2357,329 @@ const handleKeydown = (e: KeyboardEvent) => {
 }
 
 .subtitle-edit-section {
-  padding: 1.25rem;
+  padding: 1.5rem;
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.25rem;
 }
 
+/* 编辑头部 */
 .edit-header {
-  margin-bottom: 0;
-}
-
-.edit-title {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: #333;
-}
-
-/* 卡片样式 */
-.time-edit-card,
-.text-edit-card,
-.actions-card {
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.75rem;
-  overflow: hidden;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
-  transition: all 0.3s ease;
-}
-
-.time-edit-card:hover,
-.text-edit-card:hover {
-  box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.08);
-  border-color: #d1d5db;
-}
-
-/* 卡片头部 */
-.card-header {
-  padding: 0.75rem 1rem;
-  background: #f9fafb;
-  border-bottom: 1px solid #e5e7eb;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.card-title {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: #374151;
-  letter-spacing: 0.01em;
-}
-
-.text-count {
-  font-size: 0.75rem;
-  color: #9ca3af;
-  font-weight: 500;
-  padding: 0.25rem 0.625rem;
-  background: #ffffff;
-  border-radius: 0.375rem;
-  border: 1px solid #e5e7eb;
-}
-
-/* 紧凑的时间编辑布局 */
-.time-fields-compact {
+.edit-header-left {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  flex-wrap: wrap;
 }
 
-.time-control-group {
+.edit-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #3b82f6;
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  padding: 0.25rem 0.625rem;
+  border-radius: 6px;
+  border: 1px solid #bfdbfe;
+}
+
+.edit-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+}
+
+.delete-entry-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #94a3b8;
+  transition: all 0.2s ease;
+}
+
+.delete-entry-btn:hover {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #ef4444;
+}
+
+/* 时间设置 - 紧凑单行布局 */
+.time-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.time-block {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
-.time-label {
+.time-block .time-label {
   font-size: 0.75rem;
   font-weight: 500;
-  color: #6b7280;
+  color: #64748b;
   white-space: nowrap;
-  min-width: 32px;
 }
 
-.time-value-wrapper {
+.time-control {
   display: flex;
   align-items: center;
-  gap: 0.375rem;
 }
 
-.time-input-compact {
-  width: 120px;
-}
-
-.time-input-compact :deep(.el-input__wrapper) {
-  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
-  font-size: 0.8125rem;
-  padding: 0.25rem 0.5rem;
-  background: #f9fafb;
-  border-radius: 0.375rem;
-  border: 1px solid #e5e7eb;
-  transition: all 0.2s ease;
-  height: 28px;
-  box-sizing: border-box;
-}
-
-.time-input-compact :deep(.el-input__wrapper:hover) {
-  border-color: #d1d5db;
-  background: #ffffff;
-}
-
-.time-input-compact :deep(.el-input__wrapper.is-focus) {
-  border-color: #3b82f6;
-  background: #ffffff;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-}
-
-.time-input-compact :deep(.el-input__inner) {
-  text-align: center;
-  color: #1f2937;
-  font-size: 0.8125rem;
-}
-
-.time-adjust-btns {
-  display: flex;
-  gap: 0.125rem;
-}
-
-.time-btn {
-  width: 22px;
-  height: 22px;
+.time-btn-sm {
+  width: 28px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #ffffff;
-  border: 1px solid #d1d5db;
-  border-radius: 0.25rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 0.875rem;
-  color: #6b7280;
+  transition: all 0.15s ease;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: #64748b;
   padding: 0;
 }
 
-.time-btn:hover {
-  background: #f3f4f6;
-  border-color: #9ca3af;
-  color: #374151;
+.time-btn-sm:first-child {
+  border-radius: 6px 0 0 6px;
+  border-right: none;
 }
 
-.time-btn:active {
-  background: #e5e7eb;
-  transform: scale(0.95);
+.time-btn-sm:last-child {
+  border-radius: 0 6px 6px 0;
+  border-left: none;
 }
 
-.time-arrow-compact {
+.time-btn-sm:hover {
+  background: #eff6ff;
+  color: #3b82f6;
+}
+
+.time-btn-sm:active {
+  background: #dbeafe;
+}
+
+.time-input-sm {
+  width: 115px;
+}
+
+.time-input-sm :deep(.el-input__wrapper) {
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 0.8125rem;
+  padding: 0 0.5rem;
+  background: #ffffff;
+  border-radius: 0;
+  border: 1px solid #e2e8f0;
+  border-left: none;
+  border-right: none;
+  transition: all 0.2s ease;
+  height: 32px;
+  box-sizing: border-box;
+  box-shadow: none;
+}
+
+.time-input-sm :deep(.el-input__wrapper:hover) {
+  border-color: #e2e8f0;
+}
+
+.time-input-sm :deep(.el-input__wrapper.is-focus) {
+  border-color: #3b82f6;
+  box-shadow: none;
+}
+
+.time-input-sm :deep(.el-input__inner) {
+  text-align: center;
+  color: #1e293b;
+  font-size: 0.8125rem;
+}
+
+.time-separator {
   font-size: 0.875rem;
-  color: #9ca3af;
-  font-weight: 300;
-  margin: 0 0.125rem;
+  color: #94a3b8;
+  font-weight: 400;
 }
 
-.duration-display {
+.duration-block {
+  margin-left: auto;
+  background: #f0f9ff;
+  padding: 0.375rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #bae6fd;
+}
+
+.duration-block .time-label {
+  color: #0369a1;
+}
+
+.duration-value-sm {
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #0369a1;
+}
+
+/* 文本编辑卡片 - 新设计 */
+.text-edit-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.text-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.text-header-left {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
-.duration-value {
-  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: #1e40af;
-  padding: 0.25rem 0.5rem;
-  background: #eff6ff;
-  border-radius: 0.375rem;
-  border: 1px solid #bfdbfe;
-  text-align: center;
-  min-width: 120px;
-  height: 28px;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.text-icon {
+  color: #64748b;
 }
 
-/* 文本编辑区域 */
-.textarea-wrapper {
+.text-card-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.char-count {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-weight: 500;
+  padding: 0.25rem 0.625rem;
+  background: #ffffff;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+
+.text-input-wrapper {
   padding: 1rem;
 }
 
-.text-input :deep(.el-input__wrapper) {
-  border-radius: 0.5rem;
-  border: 1px solid #e5e7eb;
-  padding: 0 0.75rem;
+.text-input-new :deep(.el-input__wrapper) {
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  padding: 0 0.875rem;
   font-size: 0.9375rem;
   line-height: 1.6;
   transition: all 0.2s ease;
   background: #ffffff;
-  height: 40px;
+  height: 44px;
   box-sizing: border-box;
 }
 
-.text-input :deep(.el-input__wrapper:hover) {
-  border-color: #d1d5db;
+.text-input-new :deep(.el-input__wrapper:hover) {
+  border-color: #cbd5e1;
 }
 
-.text-input :deep(.el-input__wrapper.is-focus) {
+.text-input-new :deep(.el-input__wrapper.is-focus) {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.text-input :deep(.el-input__inner) {
-  color: #1f2937;
+.text-input-new :deep(.el-input__inner) {
+  color: #1e293b;
   font-size: 0.9375rem;
 }
 
-.text-input :deep(.el-input__inner::placeholder) {
-  color: #9ca3af;
+.text-input-new :deep(.el-input__inner::placeholder) {
+  color: #94a3b8;
 }
 
-/* 操作按钮卡片 */
-.actions-card {
+/* 快捷操作 - 新设计 */
+.quick-actions {
   display: flex;
+  align-items: center;
   gap: 0.75rem;
   padding: 0.75rem 1rem;
-  background: #fafafa;
+  background: #f8fafc;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
 }
 
-.action-btn {
+.actions-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.actions-group {
+  display: flex;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.quick-action-btn {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  padding: 0.625rem 1rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border-radius: 0.5rem;
-  transition: all 0.2s ease;
-}
-
-.action-btn .btn-icon {
-  font-size: 1.125rem;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-}
-
-.action-btn:not(.danger) {
+  gap: 0.375rem;
+  padding: 0.5rem 0.75rem;
   background: #ffffff;
-  border: 1px solid #d1d5db;
-  color: #374151;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #475569;
 }
 
-.action-btn:not(.danger):hover {
-  background: #f3f4f6;
-  border-color: #9ca3af;
+.quick-action-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #3b82f6;
   transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
 }
 
-.action-btn.danger {
-  border-width: 1px;
+.quick-action-btn:active {
+  transform: translateY(0);
 }
 
-.action-btn.danger:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(239, 68, 68, 0.15);
+.quick-action-btn svg {
+  flex-shrink: 0;
 }
 
-/* 无选中状态优化 */
+/* 无选中状态 - 新设计 */
 .no-selection {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 3rem;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
 }
 
 .no-selection-content {
@@ -2518,20 +2687,71 @@ const handleKeydown = (e: KeyboardEvent) => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
+  gap: 1.25rem;
+  max-width: 280px;
 }
 
-.no-selection-icon {
-  font-size: 5rem;
-  opacity: 0.25;
-  line-height: 1;
-  color: #9ca3af;
+.no-selection-icon-wrapper {
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border-radius: 20px;
+  border: 1px solid #e2e8f0;
+  color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
 }
 
-.no-selection-text {
-  font-size: 0.9375rem;
-  color: #9ca3af;
+.no-selection-text-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.no-selection-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #475569;
   margin: 0;
+}
+
+.no-selection-hint {
+  font-size: 0.8125rem;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.no-selection-shortcuts {
+  display: flex;
+  gap: 1.5rem;
+  padding-top: 0.5rem;
+}
+
+.shortcut-item {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.shortcut-item kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 0.375rem;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: #64748b;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 /* 搜索高亮样式 */
