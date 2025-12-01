@@ -145,8 +145,9 @@ pub fn write_srt_file(file_path: &str, entries: &[SubtitleEntry]) -> Result<(), 
     let mut content = String::new();
 
     for (index, entry) in entries.iter().enumerate() {
-        // Add subtitle ID (sequence number)
-        content.push_str(&format!("{}\n", entry.id));
+        // Add subtitle ID (sequence number starting from 1)
+        // Always use sequential numbering regardless of original id
+        content.push_str(&format!("{}\n", index + 1));
 
         // Add timestamp line
         content.push_str(&format!(

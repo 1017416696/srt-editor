@@ -236,12 +236,25 @@ export const useSubtitleStore = defineStore('subtitle', () => {
       after: {},
     })
 
+    // 记录当前选中的字幕在数组中的位置（用于重新编号后恢复选中）
+    const currentSelectedIndex = entries.value.findIndex((e) => e.id === currentEntryId.value)
+
     entries.value.splice(index, 1)
+
+    // 重新编号：从 1 开始连续编号
+    entries.value.forEach((e, i) => {
+      e.id = i + 1
+    })
 
     // 调整当前选中
     if (currentEntryId.value === entryId) {
-      currentEntryId.value =
-        entries.value[index]?.id || entries.value[index - 1]?.id || null
+      // 删除的是当前选中的，选中下一个或上一个
+      const newEntry = entries.value[index] || entries.value[index - 1]
+      currentEntryId.value = newEntry?.id || null
+    } else if (currentSelectedIndex !== -1) {
+      // 删除的不是当前选中的，根据原位置更新 id
+      const newIndex = currentSelectedIndex > index ? currentSelectedIndex - 1 : currentSelectedIndex
+      currentEntryId.value = entries.value[newIndex]?.id || null
     }
 
     detectTimeConflicts()
