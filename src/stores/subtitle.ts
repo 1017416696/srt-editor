@@ -263,78 +263,67 @@ export const useSubtitleStore = defineStore('subtitle', () => {
 
   // 新增字幕
   const addEntry = (afterId?: number) => {
-    const newId =
-      entries.value.length > 0
-        ? Math.max(...entries.value.map((e) => e.id)) + 1
-        : 1
+    // 默认时长 3 秒
+    const DEFAULT_DURATION_MS = 3000
+
+    // 辅助函数：毫秒转时间戳
+    const msToTimeStamp = (ms: number): TimeStamp => {
+      const totalSeconds = Math.floor(ms / 1000)
+      return {
+        hours: Math.floor(totalSeconds / 3600),
+        minutes: Math.floor((totalSeconds % 3600) / 60),
+        seconds: totalSeconds % 60,
+        milliseconds: ms % 1000,
+      }
+    }
 
     // 计算新增字幕的时间
-    let startTime = { hours: 0, minutes: 0, seconds: 0, milliseconds: 0 }
-    let endTime = { hours: 0, minutes: 0, seconds: 1, milliseconds: 0 }
+    let startTime: TimeStamp
+    let endTime: TimeStamp
 
     if (afterId !== undefined) {
       // 在指定字幕后面插入
-      const afterIndex = entries.value.findIndex((e) => e.id === afterId)
-      const afterEntry = entries.value[afterIndex]
+      const afterEntry = entries.value.find((e) => e.id === afterId)
 
       if (afterEntry) {
         // 新字幕的开始时间 = 前一个字幕的结束时间
-        const afterEndMs = timeStampToMs(afterEntry.endTime)
-        const newStartMs = afterEndMs
+        const newStartMs = timeStampToMs(afterEntry.endTime)
+        const newEndMs = newStartMs + DEFAULT_DURATION_MS
 
-        // 新字幕的结束时间 = 新开始时间 + 1秒
-        const newEndMs = newStartMs + 1000
-
-        // 转换回时间戳格式
-        const startSeconds = Math.floor(newStartMs / 1000)
-        const endSeconds = Math.floor(newEndMs / 1000)
-
-        startTime = {
-          hours: Math.floor(startSeconds / 3600),
-          minutes: Math.floor((startSeconds % 3600) / 60),
-          seconds: startSeconds % 60,
-          milliseconds: newStartMs % 1000,
-        }
-
-        endTime = {
-          hours: Math.floor(endSeconds / 3600),
-          minutes: Math.floor((endSeconds % 3600) / 60),
-          seconds: endSeconds % 60,
-          milliseconds: newEndMs % 1000,
-        }
+        startTime = msToTimeStamp(newStartMs)
+        endTime = msToTimeStamp(newEndMs)
+      } else {
+        // 找不到指定字幕，使用默认时间
+        startTime = { hours: 0, minutes: 0, seconds: 0, milliseconds: 0 }
+        endTime = { hours: 0, minutes: 0, seconds: 3, milliseconds: 0 }
       }
     } else if (entries.value.length > 0) {
       // 在末尾添加，时间接在最后一个字幕之后
       const lastEntry = entries.value[entries.value.length - 1]
-      const lastEndMs = timeStampToMs(lastEntry.endTime)
-      const newStartMs = lastEndMs
-      const newEndMs = newStartMs + 1000
+      const newStartMs = timeStampToMs(lastEntry.endTime)
+      const newEndMs = newStartMs + DEFAULT_DURATION_MS
 
-      const startSeconds = Math.floor(newStartMs / 1000)
-      const endSeconds = Math.floor(newEndMs / 1000)
-
-      startTime = {
-        hours: Math.floor(startSeconds / 3600),
-        minutes: Math.floor((startSeconds % 3600) / 60),
-        seconds: startSeconds % 60,
-        milliseconds: newStartMs % 1000,
-      }
-
-      endTime = {
-        hours: Math.floor(endSeconds / 3600),
-        minutes: Math.floor((endSeconds % 3600) / 60),
-        seconds: endSeconds % 60,
-        milliseconds: newEndMs % 1000,
-      }
+      startTime = msToTimeStamp(newStartMs)
+      endTime = msToTimeStamp(newEndMs)
+    } else {
+      // 空列表，使用默认时间
+      startTime = { hours: 0, minutes: 0, seconds: 0, milliseconds: 0 }
+      endTime = { hours: 0, minutes: 0, seconds: 3, milliseconds: 0 }
     }
 
+    // 临时 id，插入后会重新编号
+    const tempId = entries.value.length > 0
+      ? Math.max(...entries.value.map((e) => e.id)) + 1
+      : 1
+
     const newEntry: SubtitleEntry = {
-      id: newId,
+      id: tempId,
       startTime,
       endTime,
       text: '',
     }
 
+    // 插入字幕
     if (afterId !== undefined) {
       const index = entries.value.findIndex((e) => e.id === afterId)
       entries.value.splice(index + 1, 0, newEntry)
@@ -342,18 +331,31 @@ export const useSubtitleStore = defineStore('subtitle', () => {
       entries.value.push(newEntry)
     }
 
+    // 重新编号：从 1 开始连续编号
+    entries.value.forEach((e, i) => {
+      e.id = i + 1
+    })
+
+    // 找到新插入字幕的实际 id
+    const insertedIndex = afterId !== undefined
+      ? entries.value.findIndex((e) => e.id === afterId) + 1
+      : entries.value.length
+    const newId = insertedIndex
+
     addHistory({
       type: HistoryActionType.ADD,
       timestamp: Date.now(),
       entryId: newId,
       before: {},
-      after: { ...newEntry },
+      after: { ...entries.value[insertedIndex - 1] },
     })
 
     currentEntryId.value = newId
     editingEntryId.value = newId
 
     assignSubtitleToTracks()
+
+    return newId
   }
 
   // 批量去除标点符号

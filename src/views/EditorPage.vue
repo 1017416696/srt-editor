@@ -819,10 +819,28 @@ const openSettings = () => {
   ElMessage.info('设置功能开发中...')
 }
 
-// 打开字幕功能
-const openSubtitle = () => {
-  // TODO: 实现字幕功能
-  ElMessage.info('字幕功能开发中...')
+// 添加字幕
+const openSubtitle = async () => {
+  // 如果正在播放，暂停
+  if (audioStore.playerState.isPlaying) {
+    audioStore.pause()
+  }
+
+  // 如果有选中的字幕，在其后面插入；否则添加到末尾
+  const afterId = selectedEntryId.value ?? undefined
+  const newId = subtitleStore.addEntry(afterId)
+
+  // 选中新添加的字幕
+  selectedEntryId.value = newId
+
+  // 保存文件
+  if (subtitleStore.currentFilePath) {
+    try {
+      await subtitleStore.saveToFile()
+    } catch (error) {
+      // 保存失败，静默处理
+    }
+  }
 }
 
 // 返回欢迎页
