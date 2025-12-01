@@ -156,7 +156,6 @@ const processFiles = async ({
         await subtitleStore.loadSRTFile(srtFile)
         droppedFiles.value.srt = srtPath.split('/').pop() || srtPath
         srtLoaded = true
-        ElMessage.success(`字幕文件加载成功：${droppedFiles.value.srt}`)
       } catch (error) {
         await ElMessageBox.alert(
           `加载 SRT 文件失败：${error instanceof Error ? error.message : '未知错误'}`,
@@ -184,7 +183,6 @@ const processFiles = async ({
         await audioStore.loadAudio(audioFile)
         droppedFiles.value.audio = fileName
         audioLoaded = true
-        ElMessage.success(`音频文件加载成功：${fileName}`)
       } catch (error) {
         await ElMessageBox.alert(
           `加载音频文件失败：${error instanceof Error ? error.message : '未知错误'}`,
