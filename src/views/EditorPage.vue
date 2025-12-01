@@ -1231,6 +1231,7 @@ const handleKeydown = (e: KeyboardEvent) => {
                   </template>
                 </el-button>
                 <el-button
+                  v-if="hasAudio"
                   link
                   type="primary"
                   size="small"
