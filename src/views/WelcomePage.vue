@@ -4,7 +4,9 @@ import { useRouter } from 'vue-router'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Setting } from '@element-plus/icons-vue'
 import { useSubtitleStore } from '@/stores/subtitle'
 import { useAudioStore } from '@/stores/audio'
 import type { SRTFile, AudioFile } from '@/types/subtitle'
@@ -212,10 +214,34 @@ const processFiles = async ({
     }
   }
 }
+
+// 标题栏鼠标按下事件 - 开始拖拽窗口
+const onTitlebarMousedown = async (e: MouseEvent) => {
+  if (e.button === 0) {
+    e.preventDefault()
+    try {
+      await getCurrentWindow().startDragging()
+    } catch (err) {
+      console.error('Failed to start dragging:', err)
+    }
+  }
+}
+
+// 打开设置
+const openSettings = () => {
+  ElMessage.info('设置功能开发中...')
+}
 </script>
 
 <template>
   <div class="welcome-page">
+    <!-- 标题栏区域（可拖拽） -->
+    <div class="titlebar" @mousedown.left="onTitlebarMousedown">
+      <button class="settings-btn" @click="openSettings" @mousedown.stop>
+        <el-icon><Setting /></el-icon>
+      </button>
+    </div>
+
     <div class="welcome-container">
       <!-- 顶部标题区域 -->
       <div class="header-section">
@@ -310,15 +336,60 @@ const processFiles = async ({
   width: 100%;
   height: 100vh;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   overflow: hidden;
+}
+
+/* 标题栏 */
+.titlebar {
+  height: 38px;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+/* 设置按钮 */
+.settings-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.settings-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.settings-btn .el-icon {
+  font-size: 14px;
+  color: white;
+  pointer-events: none;
 }
 
 .welcome-container {
   width: 90%;
   max-width: 700px;
+  margin: auto;
   background: white;
   border-radius: 1.5rem;
   box-shadow: 0 25px 70px rgba(0, 0, 0, 0.35);

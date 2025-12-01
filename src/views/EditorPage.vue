@@ -4,13 +4,14 @@ import { useRouter } from 'vue-router'
 import { open } from '@tauri-apps/plugin-dialog'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useSubtitleStore } from '@/stores/subtitle'
 import { useAudioStore } from '@/stores/audio'
 import { useConfigStore } from '@/stores/config'
 import { timeStampToMs } from '@/utils/time'
 import type { SRTFile, AudioFile, TimeStamp } from '@/types/subtitle'
 import WaveformViewer from '@/components/WaveformViewer.vue'
-import { DocumentCopy, VideoPlay, Delete, PriceTag, Document } from '@element-plus/icons-vue'
+import { DocumentCopy, VideoPlay, Delete, PriceTag, Document, Setting } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 // Debounce helper function
@@ -803,6 +804,21 @@ const handleZoomOut = () => {
   }
 }
 
+// 开始拖拽窗口
+// 标题栏鼠标按下事件 - 开始拖拽窗口
+const onTitlebarMousedown = async (e: MouseEvent) => {
+  if (e.button === 0) {
+    e.preventDefault()
+    await getCurrentWindow().startDragging()
+  }
+}
+
+// 打开设置
+const openSettings = () => {
+  // TODO: 实现设置功能
+  ElMessage.info('设置功能开发中...')
+}
+
 // 返回欢迎页
 const goBack = async () => {
   // 清理音频状态
@@ -1016,6 +1032,14 @@ const handleKeydown = (e: KeyboardEvent) => {
 
 <template>
   <div class="editor-page">
+    <!-- 标题栏区域（可拖拽） -->
+    <div class="titlebar" @mousedown.left="onTitlebarMousedown">
+      <span class="titlebar-title">SRT 字幕编辑器</span>
+      <button class="settings-btn" @click="openSettings" @mousedown.stop>
+        <el-icon><Setting /></el-icon>
+      </button>
+    </div>
+
     <!-- 时间轴区域：顶部全宽 -->
     <div v-if="hasAudio || audioStore.isGeneratingWaveform" class="timeline-section">
       <!-- 一体化控制栏：音频名称 + 缩放 + 播放 + 时长 + 音量 + 速度 -->
@@ -2148,6 +2172,59 @@ mark {
 .item-actions :deep(.el-icon) {
   width: 1em;
   height: 1em;
+}
+
+/* 标题栏 */
+.titlebar {
+  height: 38px;
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+.titlebar-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  pointer-events: none;
+}
+
+/* 设置按钮 */
+.settings-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.settings-btn:hover {
+  background: #f5f5f5;
+  border-color: #d1d5db;
+}
+
+.settings-btn .el-icon {
+  font-size: 14px;
+  color: #666;
+  pointer-events: none;
 }
 
 </style>

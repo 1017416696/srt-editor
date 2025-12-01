@@ -14,7 +14,13 @@
       {
         "title": "SRT 字幕编辑器",
         "width": 1200,
-        "height": 800
+        "height": 800,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 12,
+          "y": 16
+        }
       }
     ],
     "security": {
