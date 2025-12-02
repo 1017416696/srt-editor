@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use tauri::menu::{MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 use tauri_plugin_prevent_default::Flags;
-use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy};
+use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy, RotationStrategy};
 use log::info;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -83,25 +83,22 @@ fn trigger_open_file(window: tauri::Window) -> Result<(), String> {
     window.emit("menu:open-file", ()).map_err(|e| e.to_string())
 }
 
-/// 获取日志文件路径
+/// 获取日志目录路径
 #[tauri::command]
 fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
     let log_dir = app_handle.path().app_log_dir().map_err(|e| e.to_string())?;
-    let log_file = log_dir.join("srt-editor.log");
-    Ok(log_file.to_string_lossy().to_string())
+    Ok(log_dir.to_string_lossy().to_string())
 }
 
-/// 在系统文件管理器中显示日志文件
+/// 在系统文件管理器中打开日志目录
 #[tauri::command]
 fn show_log_in_folder(app_handle: tauri::AppHandle) -> Result<(), String> {
     let log_dir = app_handle.path().app_log_dir().map_err(|e| e.to_string())?;
-    let log_file = log_dir.join("srt-editor.log");
     
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
-            .arg("-R")
-            .arg(&log_file)
+            .arg(&log_dir)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
@@ -109,8 +106,7 @@ fn show_log_in_folder(app_handle: tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("explorer")
-            .arg("/select,")
-            .arg(&log_file)
+            .arg(&log_dir)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
@@ -510,6 +506,8 @@ pub fn run() {
                     Target::new(TargetKind::LogDir { file_name: Some("srt-editor".into()) }),
                 ])
                 .timezone_strategy(TimezoneStrategy::UseLocal)
+                // 日志轮转：保留所有日志文件，文件名包含日期（超过 40KB 后轮转）
+                .rotation_strategy(RotationStrategy::KeepAll)
                 // 默认只记录 INFO 级别
                 .level(log::LevelFilter::Info)
                 // 我们的应用在开发环境记录 DEBUG

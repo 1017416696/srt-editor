@@ -8,9 +8,11 @@
  * - ERROR: 错误信息
  *
  * 日志文件位置：
- * - macOS: ~/Library/Logs/com.srt-editor/srt-editor.log
- * - Windows: %APPDATA%/com.srt-editor/logs/srt-editor.log
- * - Linux: ~/.config/com.srt-editor/logs/srt-editor.log
+ * - macOS: ~/Library/Logs/com.srt-editor/
+ * - Windows: %APPDATA%/com.srt-editor/logs/
+ * - Linux: ~/.config/com.srt-editor/logs/
+ *
+ * 日志文件命名：srt-editor.log（超过 40KB 后会创建带日期的新文件）
  */
 
 import {

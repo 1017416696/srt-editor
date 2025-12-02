@@ -270,10 +270,10 @@ const appVersion = '0.0.4'
                 
                 <div class="log-actions">
                   <el-button size="large" @click="showLogInFolder">
-                    打开日志文件
+                    打开日志目录
                   </el-button>
                   <el-button size="large" @click="copyLogPath">
-                    复制日志路径
+                    复制目录路径
                   </el-button>
                 </div>
               </div>
