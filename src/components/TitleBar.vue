@@ -136,7 +136,7 @@ const handleDragEnd = () => {
   background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
   border-bottom: 1px solid #e2e8f0;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   user-select: none;
 }
 
@@ -159,10 +159,9 @@ const handleDragEnd = () => {
 
 .tabs-container {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 2px;
   height: 100%;
-  padding-bottom: 0;
   overflow-x: auto;
   overflow-y: hidden;
   flex-shrink: 0;
@@ -177,11 +176,11 @@ const handleDragEnd = () => {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 30px;
+  height: 28px;
   padding: 0 8px 0 12px;
   background: transparent;
   border: none;
-  border-radius: 6px 6px 0 0;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
   max-width: 180px;
@@ -247,7 +246,6 @@ const handleDragEnd = () => {
   justify-content: center;
   width: 26px;
   height: 26px;
-  margin-bottom: 2px;
   border: none;
   background: transparent;
   border-radius: 6px;
