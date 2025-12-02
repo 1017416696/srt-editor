@@ -1,4 +1,4 @@
-import { defineStore, storeToRefs } from 'pinia'
+import { defineStore } from 'pinia'
 import { computed } from 'vue'
 import type {
   SubtitleEntry,
@@ -89,78 +89,77 @@ export const useSubtitleStore = defineStore('subtitle', () => {
 
   const currentFilePath = computed(() => tabManager.activeTab?.subtitle.filePath || null)
 
-  // 检测时间冲突
-  const detectTimeConflicts = (): TimeConflict[] => {
-    const currentEntries = entries.value
+  // 检测时间冲突（可传入 entries 数组以避免重复获取 computed）
+  const detectTimeConflicts = (targetEntries?: SubtitleEntry[]): TimeConflict[] => {
+    const currentEntries = targetEntries ?? entries.value
     if (!currentEntries.length) return []
 
     const conflicts: TimeConflict[] = []
-    const sortedEntries = [...currentEntries].sort((a, b) => {
-      const aStart = timeStampToMs(a.startTime)
-      const bStart = timeStampToMs(b.startTime)
-      return aStart - bStart
-    })
+    
+    // 预计算所有时间戳，避免重复调用 timeStampToMs
+    const entriesWithTime = currentEntries.map(entry => ({
+      entry,
+      startMs: timeStampToMs(entry.startTime),
+      endMs: timeStampToMs(entry.endTime),
+    }))
+    
+    // 按开始时间排序
+    entriesWithTime.sort((a, b) => a.startMs - b.startMs)
 
-    for (let i = 0; i < sortedEntries.length - 1; i++) {
-      const current = sortedEntries[i]
-      const next = sortedEntries[i + 1]
+    // 收集有冲突的 entry id
+    const conflictIds = new Set<number>()
+
+    for (let i = 0; i < entriesWithTime.length - 1; i++) {
+      const current = entriesWithTime[i]
+      const next = entriesWithTime[i + 1]
 
       if (!current || !next) continue
 
-      const currentEnd = timeStampToMs(current.endTime)
-      const nextStart = timeStampToMs(next.startTime)
-
-      if (currentEnd > nextStart) {
-        const overlapDuration = currentEnd - nextStart
+      if (current.endMs > next.startMs) {
+        const overlapDuration = current.endMs - next.startMs
         conflicts.push({
-          entryId: current.id,
-          conflictWithId: next.id,
+          entryId: current.entry.id,
+          conflictWithId: next.entry.id,
           overlapDuration,
         })
+        conflictIds.add(current.entry.id)
+        conflictIds.add(next.entry.id)
       }
     }
 
-    // 标记有冲突的条目
+    // 批量标记有冲突的条目
     currentEntries.forEach((entry) => {
-      entry.hasConflict = conflicts.some(
-        (c) => c.entryId === entry.id || c.conflictWithId === entry.id,
-      )
+      entry.hasConflict = conflictIds.has(entry.id)
     })
 
     return conflicts
   }
 
-  // 分配字幕到轨道 (支持最多 2 个轨道)
-  const assignSubtitleToTracks = () => {
-    const currentEntries = entries.value
+  // 分配字幕到轨道 (支持最多 2 个轨道)（可传入 entries 数组以避免重复获取 computed）
+  const assignSubtitleToTracks = (targetEntries?: SubtitleEntry[]) => {
+    const currentEntries = targetEntries ?? entries.value
     if (!currentEntries.length) return
 
-    // 重置所有字幕的轨道号
-    currentEntries.forEach((entry) => {
-      entry.trackNumber = 0
-    })
-
+    // 预计算所有时间戳，避免重复调用 timeStampToMs
+    const entriesWithTime = currentEntries.map(entry => ({
+      entry,
+      startMs: timeStampToMs(entry.startTime),
+      endMs: timeStampToMs(entry.endTime),
+    }))
+    
     // 按开始时间排序
-    const sortedEntries = [...currentEntries].sort((a, b) => {
-      return timeStampToMs(a.startTime) - timeStampToMs(b.startTime)
-    })
+    entriesWithTime.sort((a, b) => a.startMs - b.startMs)
 
-    // 记录每条轨道的占用区间
-    const trackOccupancy: Map<number, Array<{ startMs: number; endMs: number }>> = new Map()
+    // 记录每条轨道的占用区间（使用数组而非 Map，性能更好）
+    const trackOccupancy: Array<Array<{ startMs: number; endMs: number }>> = [[], []]
 
     // 为每个字幕分配轨道
-    sortedEntries.forEach((entry) => {
-      const startMs = timeStampToMs(entry.startTime)
-      const endMs = timeStampToMs(entry.endTime)
-
+    entriesWithTime.forEach(({ entry, startMs, endMs }) => {
       let assignedTrack = 0
 
       for (let track = 0; track <= 1; track++) {
-        if (!trackOccupancy.has(track)) {
-          trackOccupancy.set(track, [])
-        }
-
-        const occupied = trackOccupancy.get(track)!
+        const occupied = trackOccupancy[track]!
+        // 只检查可能重叠的区间（已排序，可以优化）
         const hasConflict = occupied.some((seg) => {
           return endMs > seg.startMs && startMs < seg.endMs
         })
@@ -171,13 +170,8 @@ export const useSubtitleStore = defineStore('subtitle', () => {
         }
       }
 
-      const actualEntry = currentEntries.find((e) => e.id === entry.id)
-      if (actualEntry) {
-        actualEntry.trackNumber = assignedTrack
-      }
-
-      const track = trackOccupancy.get(assignedTrack)!
-      track.push({ startMs, endMs })
+      entry.trackNumber = assignedTrack
+      trackOccupancy[assignedTrack]!.push({ startMs, endMs })
     })
   }
 
@@ -193,11 +187,13 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     }
 
     // 创建新 tab
-    tabManager.createTab(file.path, file.entries)
+    const newTab = tabManager.createTab(file.path, file.entries)
     
-    // 检测冲突和分配轨道
-    detectTimeConflicts()
-    assignSubtitleToTracks()
+    // 直接使用新 tab 的 entries 进行检测和分配，避免通过 computed 属性访问
+    // 这样可以避免响应式追踪的开销
+    const tabEntries = newTab.subtitle.entries
+    detectTimeConflicts(tabEntries)
+    assignSubtitleToTracks(tabEntries)
     
     logger.info('SRT 文件加载完成', { path: file.path, entries: file.entries.length })
   }
