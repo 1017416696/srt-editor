@@ -158,6 +158,30 @@ const globalClearRecentFiles = async () => {
   }
 }
 
+// 全局关闭当前标签页函数
+const globalCloseCurrentTab = async () => {
+  try {
+    const { useTabManagerStore } = await import('./stores/tabManager')
+    const { useAudioStore } = await import('./stores/audio')
+    const tabManager = useTabManagerStore()
+    const audioStore = useAudioStore()
+    
+    if (!tabManager.activeTabId) {
+      return
+    }
+    
+    // 清理该 tab 的音频缓存
+    audioStore.removeTabCache(tabManager.activeTabId)
+    const shouldGoWelcome = tabManager.closeTab(tabManager.activeTabId)
+    
+    if (shouldGoWelcome) {
+      router.push('/')
+    }
+  } catch (error) {
+    logger.error('关闭标签页失败', { error: String(error) })
+  }
+}
+
 // 全局打开最近文件函数
 const globalOpenRecentFile = async (index: number) => {
   try {
@@ -220,6 +244,7 @@ const updateRecentFilesMenu = async () => {
 ;(window as any).__globalBatchRemovePunctuation = globalBatchRemovePunctuation
 ;(window as any).__globalClearRecentFiles = globalClearRecentFiles
 ;(window as any).__globalOpenRecentFile = globalOpenRecentFile
+;(window as any).__globalCloseCurrentTab = globalCloseCurrentTab
 ;(window as any).__updateRecentFilesMenu = updateRecentFilesMenu
 
 // 全局菜单事件监听器（在应用启动时注册）

@@ -168,13 +168,15 @@ fn update_recent_files_menu(app_handle: tauri::AppHandle, files: Vec<RecentFileI
 
             let open_item = MenuItem::with_id(&app_handle, "open", "打开", true, Some("CmdOrCtrl+O")).map_err(|e| e.to_string())?;
             let save_item = MenuItem::with_id(&app_handle, "save", "保存", true, Some("CmdOrCtrl+S")).map_err(|e| e.to_string())?;
-            let close_item = MenuItem::with_id(&app_handle, "close", "关闭窗口", true, Some("CmdOrCtrl+W")).map_err(|e| e.to_string())?;
+            let close_tab_item = MenuItem::with_id(&app_handle, "close-tab", "关闭标签页", true, Some("CmdOrCtrl+W")).map_err(|e| e.to_string())?;
+            let close_window_item = MenuItem::with_id(&app_handle, "close-window", "关闭窗口", true, Some("Cmd+Q")).map_err(|e| e.to_string())?;
             let file_menu = SubmenuBuilder::new(&app_handle, "文件")
                 .item(&open_item)
                 .item(&recent_menu)
                 .item(&save_item)
                 .separator()
-                .item(&close_item)
+                .item(&close_tab_item)
+                .item(&close_window_item)
                 .build()
                 .map_err(|e| e.to_string())?;
 
@@ -209,13 +211,15 @@ fn update_recent_files_menu(app_handle: tauri::AppHandle, files: Vec<RecentFileI
             
             let open_item = MenuItem::with_id(&app_handle, "open", "打开", true, Some("CmdOrCtrl+O")).map_err(|e| e.to_string())?;
             let save_item = MenuItem::with_id(&app_handle, "save", "保存", true, Some("CmdOrCtrl+S")).map_err(|e| e.to_string())?;
-            let close_item = MenuItem::with_id(&app_handle, "close", "关闭窗口", true, Some("CmdOrCtrl+W")).map_err(|e| e.to_string())?;
+            let close_tab_item = MenuItem::with_id(&app_handle, "close-tab", "关闭标签页", true, Some("CmdOrCtrl+W")).map_err(|e| e.to_string())?;
+            let close_window_item = MenuItem::with_id(&app_handle, "close-window", "关闭窗口", true, Some("Alt+F4")).map_err(|e| e.to_string())?;
             let file_menu = SubmenuBuilder::new(&app_handle, "文件")
                 .item(&open_item)
                 .item(&recent_menu)
                 .item(&save_item)
                 .separator()
-                .item(&close_item)
+                .item(&close_tab_item)
+                .item(&close_window_item)
                 .build()
                 .map_err(|e| e.to_string())?;
 
@@ -302,13 +306,15 @@ pub fn run() {
                 // 创建 文件 菜单（macOS 使用 Cmd）
                 let open_item = MenuItem::with_id(app, "open", "打开", true, Some("CmdOrCtrl+O"))?;
                 let save_item = MenuItem::with_id(app, "save", "保存", true, Some("CmdOrCtrl+S"))?;
-                let close_item = MenuItem::with_id(app, "close", "关闭窗口", true, Some("CmdOrCtrl+W"))?;
+                let close_tab_item = MenuItem::with_id(app, "close-tab", "关闭标签页", true, Some("CmdOrCtrl+W"))?;
+                let close_window_item = MenuItem::with_id(app, "close-window", "关闭窗口", true, Some("Cmd+Q"))?;
                 let file_menu = SubmenuBuilder::new(app, "文件")
                     .item(&open_item)
                     .item(&recent_menu)
                     .item(&save_item)
                     .separator()
-                    .item(&close_item)
+                    .item(&close_tab_item)
+                    .item(&close_window_item)
                     .build()?;
 
                 // 创建 编辑 菜单（macOS 使用 Cmd）- 使用预定义菜单项以支持系统快捷键
@@ -349,13 +355,15 @@ pub fn run() {
                 // 创建 文件 菜单（Windows 使用 Ctrl）
                 let open_item = MenuItem::with_id(app, "open", "打开", true, Some("CmdOrCtrl+O"))?;
                 let save_item = MenuItem::with_id(app, "save", "保存", true, Some("CmdOrCtrl+S"))?;
-                let close_item = MenuItem::with_id(app, "close", "关闭窗口", true, Some("CmdOrCtrl+W"))?;
+                let close_tab_item = MenuItem::with_id(app, "close-tab", "关闭标签页", true, Some("CmdOrCtrl+W"))?;
+                let close_window_item = MenuItem::with_id(app, "close-window", "关闭窗口", true, Some("Alt+F4"))?;
                 let file_menu = SubmenuBuilder::new(app, "文件")
                     .item(&open_item)
                     .item(&recent_menu)
                     .item(&save_item)
                     .separator()
-                    .item(&close_item)
+                    .item(&close_tab_item)
+                    .item(&close_window_item)
                     .build()?;
 
                 // 创建 编辑 菜单（Windows 使用 Ctrl）- 使用预定义菜单项以支持系统快捷键
@@ -411,7 +419,19 @@ pub fn run() {
                             let _ = window.eval(js_code);
                         }
                     }
-                    "close" => {
+                    "close-tab" => {
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let js_code = r#"
+                                (async () => {
+                                    if (window.__globalCloseCurrentTab && typeof window.__globalCloseCurrentTab === 'function') {
+                                        await window.__globalCloseCurrentTab();
+                                    }
+                                })();
+                            "#;
+                            let _ = window.eval(js_code);
+                        }
+                    }
+                    "close-window" => {
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let _ = window.close();
                         }
