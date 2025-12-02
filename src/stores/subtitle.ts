@@ -534,28 +534,30 @@ export const useSubtitleStore = defineStore('subtitle', () => {
       text: '',
     }
 
+    let insertedIndex: number
     if (afterId !== undefined) {
       const index = currentEntries.findIndex((e) => e.id === afterId)
       currentEntries.splice(index + 1, 0, newEntry)
+      insertedIndex = index + 1
     } else {
       currentEntries.push(newEntry)
+      insertedIndex = currentEntries.length - 1
     }
 
+    // 重新编号
     currentEntries.forEach((e, i) => {
       e.id = i + 1
     })
 
-    const insertedIndex = afterId !== undefined
-      ? currentEntries.findIndex((e) => e.id === afterId) + 1
-      : currentEntries.length
-    const newId = insertedIndex
+    // 新字幕的 ID 是插入位置 + 1（因为 ID 从 1 开始）
+    const newId = insertedIndex + 1
 
     addHistory({
       type: HistoryActionType.ADD,
       timestamp: Date.now(),
       entryId: newId,
       before: {},
-      after: { ...currentEntries[insertedIndex - 1] },
+      after: { ...currentEntries[insertedIndex] },
     })
 
     currentEntryId.value = newId
