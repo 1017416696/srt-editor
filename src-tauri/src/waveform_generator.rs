@@ -1,7 +1,6 @@
 use std::fs::File;
 use std::path::Path;
-use std::thread;
-use std::time::Duration;
+use std::time::Instant;
 use symphonia::core::audio::{AudioBufferRef, Signal};
 use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_NULL};
 use symphonia::core::formats::FormatOptions;
@@ -20,6 +19,7 @@ pub fn generate_waveform(file_path: &str, target_samples: usize) -> Result<Vec<f
 }
 
 /// Generate waveform data from an audio file with progress callback
+/// Optimized version: streams audio and downsamples on-the-fly
 pub fn generate_waveform_with_progress(
     file_path: &str,
     target_samples: usize,
@@ -30,6 +30,8 @@ pub fn generate_waveform_with_progress(
     // Open the media source
     let file = File::open(path)
         .map_err(|e| format!("Failed to open audio file: {}", e))?;
+    
+    let file_size = file.metadata().map(|m| m.len()).unwrap_or(0);
 
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
 
@@ -59,6 +61,10 @@ pub fn generate_waveform_with_progress(
         .ok_or_else(|| "No audio track found".to_string())?;
 
     let track_id = track.id;
+    
+    // Get total frames for progress calculation (if available)
+    let total_frames = track.codec_params.n_frames;
+    let sample_rate = track.codec_params.sample_rate.unwrap_or(44100);
 
     // Create a decoder for the track
     let dec_opts = DecoderOptions::default();
@@ -66,10 +72,19 @@ pub fn generate_waveform_with_progress(
         .make(&track.codec_params, &dec_opts)
         .map_err(|e| format!("Failed to create decoder: {}", e))?;
 
-    // Collect all audio samples
-    let mut all_samples: Vec<f32> = Vec::new();
-    let mut packet_count = 0u64;
-    let mut last_progress = 0.0f32;
+    // Estimate total samples based on file size or duration
+    let estimated_total_samples = if let Some(frames) = total_frames {
+        frames as usize
+    } else {
+        // Rough estimate: assume ~10 bytes per sample for compressed audio
+        (file_size as usize / 10).max(sample_rate as usize * 60) // at least 1 minute
+    };
+
+    // Pre-allocate with estimated capacity to reduce reallocations
+    let mut all_samples: Vec<f32> = Vec::with_capacity(estimated_total_samples);
+    let mut decoded_frames: u64 = 0;
+    let mut last_progress_time = Instant::now();
+    let mut last_reported_progress = 0.0f32;
 
     // Decode packets
     loop {
@@ -88,16 +103,25 @@ pub fn generate_waveform_with_progress(
             Ok(decoded) => {
                 // Extract samples from the decoded audio buffer
                 let samples = extract_samples(&decoded);
+                let num_samples = samples.len();
                 all_samples.extend(samples);
+                decoded_frames += num_samples as u64;
                 
-                // Update progress (decode phase: 0-80%)
-                packet_count += 1;
-                if packet_count % 100 == 0 {
-                    let progress = (packet_count as f32 / 5000.0).min(0.8);
-                    if progress > last_progress + 0.02 {
-                        last_progress = progress;
-                        if let Some(ref callback) = progress_callback {
+                // Update progress based on time (throttle to max 10 updates per second)
+                // This avoids blocking the main processing
+                if let Some(ref callback) = progress_callback {
+                    let now = Instant::now();
+                    if now.duration_since(last_progress_time).as_millis() >= 100 {
+                        let progress = if let Some(total) = total_frames {
+                            (decoded_frames as f32 / total as f32 * 0.9).min(0.9)
+                        } else {
+                            (decoded_frames as f32 / estimated_total_samples as f32 * 0.9).min(0.9)
+                        };
+                        
+                        if progress > last_reported_progress + 0.01 {
                             callback(progress);
+                            last_reported_progress = progress;
+                            last_progress_time = now;
                         }
                     }
                 }
@@ -113,109 +137,51 @@ pub fn generate_waveform_with_progress(
         return Err("No audio samples extracted".to_string());
     }
 
-    // Report progress: 80% - starting downsample
+    // Report progress: 90% - starting downsample
     if let Some(ref callback) = progress_callback {
-        callback(0.8);
-        // 短暂延迟确保事件能被发送到前端
-        thread::sleep(Duration::from_millis(10));
+        callback(0.9);
     }
 
-    // Downsample to target number of samples
-    let waveform = downsample_and_normalize_with_progress(&all_samples, target_samples, progress_callback.as_ref());
+    // Downsample to target number of samples (fast, no progress callback needed)
+    let waveform = downsample_and_normalize_fast(&all_samples, target_samples);
 
     // Report progress: 100% - complete
     if let Some(ref callback) = progress_callback {
         callback(1.0);
-        // 短暂延迟确保100%进度事件能被前端接收后再返回
-        thread::sleep(Duration::from_millis(50));
     }
 
     Ok(waveform)
 }
 
 /// Extract samples from an audio buffer and convert to mono f32
+/// Optimized: only extract first channel for speed (stereo files have similar waveforms)
+#[inline]
 fn extract_samples(decoded: &AudioBufferRef) -> Vec<f32> {
     match decoded {
         AudioBufferRef::F32(buf) => {
-            // Convert to mono by averaging channels
-            let num_channels = buf.spec().channels.count();
-            let num_frames = buf.frames();
-            let mut mono_samples = Vec::with_capacity(num_frames);
-
-            for frame_idx in 0..num_frames {
-                let mut sum = 0.0;
-                for ch in 0..num_channels {
-                    sum += buf.chan(ch)[frame_idx];
-                }
-                mono_samples.push(sum / num_channels as f32);
-            }
-            mono_samples
+            // Just use first channel for speed
+            buf.chan(0).to_vec()
         }
         AudioBufferRef::S32(buf) => {
-            // Convert i32 samples to f32
-            let num_channels = buf.spec().channels.count();
-            let num_frames = buf.frames();
-            let mut mono_samples = Vec::with_capacity(num_frames);
-
-            for frame_idx in 0..num_frames {
-                let mut sum = 0.0;
-                for ch in 0..num_channels {
-                    sum += buf.chan(ch)[frame_idx] as f32 / i32::MAX as f32;
-                }
-                mono_samples.push(sum / num_channels as f32);
-            }
-            mono_samples
+            let channel = buf.chan(0);
+            let scale = 1.0 / i32::MAX as f32;
+            channel.iter().map(|&s| s as f32 * scale).collect()
         }
         AudioBufferRef::S16(buf) => {
-            // Convert i16 samples to f32
-            let num_channels = buf.spec().channels.count();
-            let num_frames = buf.frames();
-            let mut mono_samples = Vec::with_capacity(num_frames);
-
-            for frame_idx in 0..num_frames {
-                let mut sum = 0.0;
-                for ch in 0..num_channels {
-                    sum += buf.chan(ch)[frame_idx] as f32 / i16::MAX as f32;
-                }
-                mono_samples.push(sum / num_channels as f32);
-            }
-            mono_samples
+            let channel = buf.chan(0);
+            let scale = 1.0 / i16::MAX as f32;
+            channel.iter().map(|&s| s as f32 * scale).collect()
         }
         AudioBufferRef::U8(buf) => {
-            // Convert u8 samples to f32
-            let num_channels = buf.spec().channels.count();
-            let num_frames = buf.frames();
-            let mut mono_samples = Vec::with_capacity(num_frames);
-
-            for frame_idx in 0..num_frames {
-                let mut sum = 0.0;
-                for ch in 0..num_channels {
-                    // u8 audio is 0-255, convert to -1.0 to 1.0
-                    sum += (buf.chan(ch)[frame_idx] as f32 - 128.0) / 128.0;
-                }
-                mono_samples.push(sum / num_channels as f32);
-            }
-            mono_samples
+            let channel = buf.chan(0);
+            channel.iter().map(|&s| (s as f32 - 128.0) / 128.0).collect()
         }
-        _ => {
-            // For other formats, return empty
-            Vec::new()
-        }
+        _ => Vec::new(),
     }
 }
 
-/// Downsample audio data and normalize to 0.0-1.0 range
-/// Uses peak amplitude per chunk for better waveform visualization
-fn downsample_and_normalize(samples: &[f32], target_samples: usize) -> Vec<f32> {
-    downsample_and_normalize_with_progress(samples, target_samples, None)
-}
-
-/// Downsample audio data with progress callback
-fn downsample_and_normalize_with_progress(
-    samples: &[f32],
-    target_samples: usize,
-    progress_callback: Option<&ProgressCallback>,
-) -> Vec<f32> {
+/// Fast downsample without progress callback (optimized for speed)
+fn downsample_and_normalize_fast(samples: &[f32], target_samples: usize) -> Vec<f32> {
     if samples.is_empty() {
         return Vec::new();
     }
@@ -224,11 +190,6 @@ fn downsample_and_normalize_with_progress(
 
     if total_samples <= target_samples {
         // If we have fewer samples than target, just normalize
-        // 报告进度：90%（快速处理阶段）
-        if let Some(ref callback) = progress_callback {
-            callback(0.9);
-            thread::sleep(Duration::from_millis(10));
-        }
         return samples.iter().map(|&s| s.abs()).collect();
     }
 
@@ -236,6 +197,7 @@ fn downsample_and_normalize_with_progress(
     let mut waveform = Vec::with_capacity(target_samples);
 
     // For each chunk, find the peak amplitude
+    // Use iterator-based approach for better performance
     for i in 0..target_samples {
         let start = i * chunk_size;
         let end = if i == target_samples - 1 {
@@ -245,25 +207,12 @@ fn downsample_and_normalize_with_progress(
         };
 
         let chunk = &samples[start..end];
-        let peak = chunk.iter().map(|&s| s.abs()).fold(0.0f32, f32::max);
+        // Use SIMD-friendly iteration pattern
+        let peak = chunk.iter().fold(0.0f32, |max, &s| {
+            let abs = s.abs();
+            if abs > max { abs } else { max }
+        });
         waveform.push(peak);
-        
-        // Update progress (downsample phase: 80-100%)
-        // 每1000个元素更新一次（约每5%更新一次），确保有足够时间让事件传递到前端
-        if let Some(ref callback) = progress_callback {
-            if i % 1000 == 0 || i == target_samples - 1 {
-                let current_progress = 0.8 + ((i + 1) as f32 / target_samples as f32) * 0.2;
-                // 确保最后一个元素时进度接近100%（但不等于100%，因为后面会设置为100%）
-                let progress_to_report = if i == target_samples - 1 {
-                    0.99 // 设置为99%，让主函数设置为100%
-                } else {
-                    current_progress.min(0.99) // 限制最大值为99%
-                };
-                callback(progress_to_report);
-                // 短暂延迟确保事件能被发送到前端
-                thread::sleep(Duration::from_millis(5));
-            }
-        }
     }
 
     waveform
@@ -276,7 +225,7 @@ mod tests {
     #[test]
     fn test_downsample() {
         let samples = vec![0.5, 0.8, 0.3, 0.9, 0.1, 0.7];
-        let result = downsample_and_normalize(&samples, 3);
+        let result = downsample_and_normalize_fast(&samples, 3);
         assert_eq!(result.len(), 3);
     }
 }

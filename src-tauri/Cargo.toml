@@ -34,9 +34,23 @@ tokio = { version = "1", features = ["rt", "sync", "time"] }
 [profile.dev]
 incremental = true # Compile your binary in smaller steps.
 
+# Optimize symphonia in dev mode for faster audio processing
+[profile.dev.package.symphonia]
+opt-level = 3
+[profile.dev.package.symphonia-core]
+opt-level = 3
+[profile.dev.package.symphonia-bundle-mp3]
+opt-level = 3
+[profile.dev.package.symphonia-codec-aac]
+opt-level = 3
+[profile.dev.package.symphonia-codec-vorbis]
+opt-level = 3
+[profile.dev.package.symphonia-format-ogg]
+opt-level = 3
+
 [profile.release]
 codegen-units = 1 # Allows LLVM to perform better optimization.
 lto = true        # Enables link-time-optimizations.
-opt-level = "s"   # Prioritizes small binary size. Use `3` if you prefer speed.
+opt-level = 3     # Prioritizes speed over binary size.
 panic = "abort"   # Higher performance by disabling panic handlers.
 strip = true      # Ensures debug symbols are removed.

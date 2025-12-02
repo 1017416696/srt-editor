@@ -50,6 +50,7 @@ export const useAudioStore = defineStore('audio', () => {
     let lastRealProgress = 0
     
     // 启动模拟进度递增（当真实进度停滞时，前端自动平滑递增）
+    // 优化：减少递增频率，因为后端现在更快了
     const startProgressSimulation = () => {
       if (progressSimulationTimer) {
         clearInterval(progressSimulationTimer)
@@ -57,10 +58,10 @@ export const useAudioStore = defineStore('audio', () => {
       progressSimulationTimer = window.setInterval(() => {
         // 如果当前进度小于99%，且已经超过真实进度，则递增
         if (waveformProgress.value < 99 && waveformProgress.value >= lastRealProgress) {
-          // 递增速度：每150ms递增1%，更平滑自然
-          waveformProgress.value = Math.min(99, waveformProgress.value + 1)
+          // 递增速度：每200ms递增0.5%，更平滑自然
+          waveformProgress.value = Math.min(99, waveformProgress.value + 0.5)
         }
-      }, 150) // 每150ms递增1%
+      }, 200) // 每200ms递增0.5%
     }
     
     // 设置事件监听器
