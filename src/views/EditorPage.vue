@@ -950,11 +950,8 @@ const handleDragEnd = () => {
   subtitleStore.endDragging()
 }
 
-// 处理波形下字幕块的双击 - 跳转到编辑区并聚焦
-const handleWaveformDoubleClick = async (id: number) => {
-  // 确保字幕已被选中
-  selectEntry(id)
-
+// 聚焦到字幕编辑区的文本输入框
+const focusSubtitleTextarea = async () => {
   // 延迟焦点设置，让 DOM 有时间更新
   await nextTick()
 
@@ -972,6 +969,19 @@ const handleWaveformDoubleClick = async (id: number) => {
       textarea.setSelectionRange(textLength, textLength)
     }
   }
+}
+
+// 处理波形下字幕块的双击 - 跳转到编辑区并聚焦
+const handleWaveformDoubleClick = async (id: number) => {
+  // 确保字幕已被选中
+  selectEntry(id)
+  await focusSubtitleTextarea()
+}
+
+// 处理字幕列表项的双击 - 聚焦到编辑区
+const handleSubtitleDoubleClick = async (id: number) => {
+  // 字幕已经在单击时被选中，直接聚焦到编辑区
+  await focusSubtitleTextarea()
 }
 
 // WaveformViewer ref
@@ -1554,6 +1564,7 @@ const handleKeydown = (e: KeyboardEvent) => {
               'is-selected': selectedEntryId === entry.id
             }"
             @click="selectEntry(entry.id)"
+            @dblclick="handleSubtitleDoubleClick(entry.id)"
           >
             <div class="item-header">
               <span class="item-number">{{ entry.id }}</span>
