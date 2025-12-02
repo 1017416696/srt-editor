@@ -14,7 +14,7 @@ import type { SRTFile, AudioFile, TimeStamp } from '@/types/subtitle'
 import WaveformViewer from '@/components/WaveformViewer.vue'
 import SettingsDialog from '@/components/SettingsDialog.vue'
 import TitleBar from '@/components/TitleBar.vue'
-import { DocumentCopy, VideoPlay, Delete, PriceTag, Document, Setting, Plus, Scissor, Search, ArrowDown, Switch } from '@element-plus/icons-vue'
+import { DocumentCopy, VideoPlay, Delete, PriceTag, Document, Setting, DocumentAdd, Scissor, Search, ArrowDown, Switch } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 // Debounce helper function
@@ -1449,7 +1449,7 @@ const handleKeydown = (e: KeyboardEvent) => {
             @click="openSubtitle"
             title="添加字幕"
           >
-            <el-icon><Plus /></el-icon>
+            <el-icon><DocumentAdd /></el-icon>
           </button>
           <button
             class="sidebar-btn"
