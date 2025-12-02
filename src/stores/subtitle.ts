@@ -1,5 +1,5 @@
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { defineStore, storeToRefs } from 'pinia'
+import { computed } from 'vue'
 import type {
   SubtitleEntry,
   SRTFile,
@@ -10,24 +10,64 @@ import type {
 import { HistoryActionType } from '@/types/subtitle'
 import { timeStampToMs } from '@/utils/time'
 import { useConfigStore } from '@/stores/config'
+import { useTabManagerStore } from '@/stores/tabManager'
 import logger from '@/utils/logger'
 
 export const useSubtitleStore = defineStore('subtitle', () => {
-  // 状态
-  const srtFile = ref<SRTFile | null>(null)
-  const entries = ref<SubtitleEntry[]>([])
-  const currentEntryId = ref<number | null>(null)
-  const editingEntryId = ref<number | null>(null)
+  const tabManager = useTabManagerStore()
 
-  // 编辑历史
-  const history = ref<HistoryAction[]>([])
-  const historyIndex = ref(-1)
-  const savedHistoryIndex = ref(-1) // 记录保存时的历史索引位置
-
-  // 查找状态
-  const searchQuery = ref('')
-  const searchResults = ref<number[]>([])
-  const currentSearchIndex = ref(0)
+  // 从当前激活的 tab 获取状态
+  const entries = computed(() => tabManager.activeTab?.subtitle.entries ?? [])
+  const currentEntryId = computed({
+    get: () => tabManager.activeTab?.subtitle.currentEntryId ?? null,
+    set: (val) => {
+      if (tabManager.activeTab) {
+        tabManager.activeTab.subtitle.currentEntryId = val
+      }
+    }
+  })
+  const editingEntryId = computed({
+    get: () => tabManager.activeTab?.subtitle.editingEntryId ?? null,
+    set: (val) => {
+      if (tabManager.activeTab) {
+        tabManager.activeTab.subtitle.editingEntryId = val
+      }
+    }
+  })
+  const history = computed(() => tabManager.activeTab?.subtitle.history ?? [])
+  const historyIndex = computed({
+    get: () => tabManager.activeTab?.subtitle.historyIndex ?? -1,
+    set: (val) => {
+      if (tabManager.activeTab) {
+        tabManager.activeTab.subtitle.historyIndex = val
+      }
+    }
+  })
+  const savedHistoryIndex = computed({
+    get: () => tabManager.activeTab?.subtitle.savedHistoryIndex ?? -1,
+    set: (val) => {
+      if (tabManager.activeTab) {
+        tabManager.activeTab.subtitle.savedHistoryIndex = val
+      }
+    }
+  })
+  const searchQuery = computed({
+    get: () => tabManager.activeTab?.subtitle.searchQuery ?? '',
+    set: (val) => {
+      if (tabManager.activeTab) {
+        tabManager.activeTab.subtitle.searchQuery = val
+      }
+    }
+  })
+  const searchResults = computed(() => tabManager.activeTab?.subtitle.searchResults ?? [])
+  const currentSearchIndex = computed({
+    get: () => tabManager.activeTab?.subtitle.currentSearchIndex ?? 0,
+    set: (val) => {
+      if (tabManager.activeTab) {
+        tabManager.activeTab.subtitle.currentSearchIndex = val
+      }
+    }
+  })
 
   // 计算属性
   const currentEntry = computed(() => {
@@ -47,10 +87,15 @@ export const useSubtitleStore = defineStore('subtitle', () => {
   const canUndo = computed(() => historyIndex.value >= 0)
   const canRedo = computed(() => historyIndex.value < history.value.length - 1)
 
+  const currentFilePath = computed(() => tabManager.activeTab?.subtitle.filePath || null)
+
   // 检测时间冲突
   const detectTimeConflicts = (): TimeConflict[] => {
+    const currentEntries = entries.value
+    if (!currentEntries.length) return []
+
     const conflicts: TimeConflict[] = []
-    const sortedEntries = [...entries.value].sort((a, b) => {
+    const sortedEntries = [...currentEntries].sort((a, b) => {
       const aStart = timeStampToMs(a.startTime)
       const bStart = timeStampToMs(b.startTime)
       return aStart - bStart
@@ -76,7 +121,7 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     }
 
     // 标记有冲突的条目
-    entries.value.forEach((entry) => {
+    currentEntries.forEach((entry) => {
       entry.hasConflict = conflicts.some(
         (c) => c.entryId === entry.id || c.conflictWithId === entry.id,
       )
@@ -87,38 +132,36 @@ export const useSubtitleStore = defineStore('subtitle', () => {
 
   // 分配字幕到轨道 (支持最多 2 个轨道)
   const assignSubtitleToTracks = () => {
+    const currentEntries = entries.value
+    if (!currentEntries.length) return
+
     // 重置所有字幕的轨道号
-    entries.value.forEach((entry) => {
+    currentEntries.forEach((entry) => {
       entry.trackNumber = 0
     })
 
     // 按开始时间排序
-    const sortedEntries = [...entries.value].sort((a, b) => {
+    const sortedEntries = [...currentEntries].sort((a, b) => {
       return timeStampToMs(a.startTime) - timeStampToMs(b.startTime)
     })
 
-    // 记录每条轨道的占用区间: Map<trackNumber, Array<{startMs, endMs}>>
-    const trackOccupancy: Map<number, Array<{ startMs: number; endMs: number }>> =
-      new Map()
+    // 记录每条轨道的占用区间
+    const trackOccupancy: Map<number, Array<{ startMs: number; endMs: number }>> = new Map()
 
     // 为每个字幕分配轨道
     sortedEntries.forEach((entry) => {
       const startMs = timeStampToMs(entry.startTime)
       const endMs = timeStampToMs(entry.endTime)
 
-      // 找第一个不冲突的轨道
       let assignedTrack = 0
 
-      // 只支持最多 2 个轨道 (0 和 1)
       for (let track = 0; track <= 1; track++) {
         if (!trackOccupancy.has(track)) {
           trackOccupancy.set(track, [])
         }
 
         const occupied = trackOccupancy.get(track)!
-        // 检查是否与当前轨道上的任何区间冲突
         const hasConflict = occupied.some((seg) => {
-          // endMs > startMs 表示有冲突（根据冲突定义）
           return endMs > seg.startMs && startMs < seg.endMs
         })
 
@@ -128,36 +171,43 @@ export const useSubtitleStore = defineStore('subtitle', () => {
         }
       }
 
-      // 将字幕分配到找到的轨道
-      const actualEntry = entries.value.find((e) => e.id === entry.id)
+      const actualEntry = currentEntries.find((e) => e.id === entry.id)
       if (actualEntry) {
         actualEntry.trackNumber = assignedTrack
       }
 
-      // 记录轨道占用
       const track = trackOccupancy.get(assignedTrack)!
       track.push({ startMs, endMs })
     })
   }
 
-  // 加载 SRT 文件
+
+  // 加载 SRT 文件（现在由 tabManager 处理创建 tab）
   const loadSRTFile = (file: SRTFile) => {
-    srtFile.value = file
-    entries.value = file.entries
-    currentEntryId.value = entries.value.length > 0 ? (entries.value[0]?.id ?? null) : null
-    history.value = []
-    historyIndex.value = -1
-    savedHistoryIndex.value = -1
+    // 检查文件是否已经打开
+    const existingTab = tabManager.findTabByFilePath(file.path)
+    if (existingTab) {
+      // 已经打开，切换到该 tab
+      tabManager.setActiveTab(existingTab.id)
+      return
+    }
+
+    // 创建新 tab
+    tabManager.createTab(file.path, file.entries)
+    
+    // 检测冲突和分配轨道
     detectTimeConflicts()
     assignSubtitleToTracks()
+    
     logger.info('SRT 文件加载完成', { path: file.path, entries: file.entries.length })
   }
 
   // 根据播放时间获取当前字幕
   const getCurrentEntryByTime = (currentTime: number) => {
     const currentMs = currentTime * 1000
+    const currentEntries = entries.value
 
-    const entry = entries.value.find((e) => {
+    const entry = currentEntries.find((e) => {
       const startMs = timeStampToMs(e.startTime)
       const endMs = timeStampToMs(e.endTime)
       return currentMs >= startMs && currentMs <= endMs
@@ -178,7 +228,6 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     const oldText = entry.text
     if (oldText === newText) return
 
-    // 记录历史
     addHistory({
       type: HistoryActionType.TEXT_EDIT,
       timestamp: Date.now(),
@@ -191,15 +240,15 @@ export const useSubtitleStore = defineStore('subtitle', () => {
   }
 
   // 拖动开始时的原始时间（用于记录历史）
-  const dragOriginalTimes = ref<Map<number, { startTime: TimeStamp; endTime: TimeStamp }>>(new Map())
+  let dragOriginalTimes = new Map<number, { startTime: TimeStamp; endTime: TimeStamp }>()
 
   // 开始拖动时调用，记录原始时间
   const startDragging = (entryIds: number[]) => {
-    dragOriginalTimes.value.clear()
+    dragOriginalTimes.clear()
     entryIds.forEach((id) => {
       const entry = entries.value.find((e) => e.id === id)
       if (entry) {
-        dragOriginalTimes.value.set(id, {
+        dragOriginalTimes.set(id, {
           startTime: { ...entry.startTime },
           endTime: { ...entry.endTime },
         })
@@ -209,14 +258,13 @@ export const useSubtitleStore = defineStore('subtitle', () => {
 
   // 结束拖动时调用，记录历史
   const endDragging = () => {
-    // 收集所有有变化的字幕
     const changedEntries: Array<{
       entryId: number
       before: Partial<SubtitleEntry>
       after: Partial<SubtitleEntry>
     }> = []
 
-    dragOriginalTimes.value.forEach((original, entryId) => {
+    dragOriginalTimes.forEach((original, entryId) => {
       const entry = entries.value.find((e) => e.id === entryId)
       if (!entry) return
 
@@ -245,9 +293,7 @@ export const useSubtitleStore = defineStore('subtitle', () => {
       }
     })
 
-    // 只有有变化时才记录历史
     if (changedEntries.length === 1) {
-      // 单个字幕变化，记录普通历史
       const changed = changedEntries[0]!
       addHistory({
         type: HistoryActionType.TIME_EDIT,
@@ -257,8 +303,6 @@ export const useSubtitleStore = defineStore('subtitle', () => {
         after: changed.after,
       })
     } else if (changedEntries.length > 1) {
-      // 多个字幕变化，逐个记录（撤销时会逐个恢复）
-      // 注意：这里按顺序记录，撤销时会按相反顺序恢复
       changedEntries.forEach(({ entryId, before, after }) => {
         addHistory({
           type: HistoryActionType.TIME_EDIT,
@@ -270,10 +314,10 @@ export const useSubtitleStore = defineStore('subtitle', () => {
       })
     }
 
-    dragOriginalTimes.value.clear()
+    dragOriginalTimes.clear()
   }
 
-  // 编辑时间（拖动过程中调用，不记录历史）
+  // 编辑时间
   const updateEntryTime = (
     entryId: number,
     startTime?: TimeStamp,
@@ -287,7 +331,6 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     const after: Partial<SubtitleEntry> = {}
     let hasChanges = false
 
-    // 检查开始时间是否有变化
     if (startTime) {
       const oldStartMs = timeStampToMs(entry.startTime)
       const newStartMs = timeStampToMs(startTime)
@@ -299,7 +342,6 @@ export const useSubtitleStore = defineStore('subtitle', () => {
       }
     }
 
-    // 检查结束时间是否有变化
     if (endTime) {
       const oldEndMs = timeStampToMs(entry.endTime)
       const newEndMs = timeStampToMs(endTime)
@@ -311,7 +353,6 @@ export const useSubtitleStore = defineStore('subtitle', () => {
       }
     }
 
-    // 只有明确要求记录历史时才记录（用于非拖动场景，如输入框修改）
     if (recordHistory && hasChanges) {
       addHistory({
         type: HistoryActionType.TIME_EDIT,
@@ -328,10 +369,11 @@ export const useSubtitleStore = defineStore('subtitle', () => {
 
   // 删除字幕
   const deleteEntry = (entryId: number) => {
-    const index = entries.value.findIndex((e) => e.id === entryId)
+    const currentEntries = entries.value
+    const index = currentEntries.findIndex((e) => e.id === entryId)
     if (index === -1) return
 
-    const entry = entries.value[index]
+    const entry = currentEntries[index]
 
     logger.info('删除字幕', { entryId, text: entry?.text?.substring(0, 30) })
 
@@ -343,45 +385,41 @@ export const useSubtitleStore = defineStore('subtitle', () => {
       after: {},
     })
 
-    // 记录当前选中的字幕在数组中的位置（用于重新编号后恢复选中）
-    const currentSelectedIndex = entries.value.findIndex((e) => e.id === currentEntryId.value)
+    const currentSelectedIndex = currentEntries.findIndex((e) => e.id === currentEntryId.value)
 
-    entries.value.splice(index, 1)
+    currentEntries.splice(index, 1)
 
-    // 重新编号：从 1 开始连续编号
-    entries.value.forEach((e, i) => {
+    // 重新编号
+    currentEntries.forEach((e, i) => {
       e.id = i + 1
     })
 
-    // 调整当前选中
     if (currentEntryId.value === entryId) {
-      // 删除的是当前选中的，选中下一个或上一个
-      const newEntry = entries.value[index] || entries.value[index - 1]
+      const newEntry = currentEntries[index] || currentEntries[index - 1]
       currentEntryId.value = newEntry?.id || null
     } else if (currentSelectedIndex !== -1) {
-      // 删除的不是当前选中的，根据原位置更新 id
       const newIndex = currentSelectedIndex > index ? currentSelectedIndex - 1 : currentSelectedIndex
-      currentEntryId.value = entries.value[newIndex]?.id || null
+      currentEntryId.value = currentEntries[newIndex]?.id || null
     }
 
     detectTimeConflicts()
     assignSubtitleToTracks()
   }
 
+
   // 分割字幕
   const splitEntry = (entryId: number, splitTimeMs: number) => {
-    const entry = entries.value.find((e) => e.id === entryId)
+    const currentEntries = entries.value
+    const entry = currentEntries.find((e) => e.id === entryId)
     if (!entry) return null
 
     const startMs = timeStampToMs(entry.startTime)
     const endMs = timeStampToMs(entry.endTime)
 
-    // 确保分割点在字幕时间范围内
     if (splitTimeMs <= startMs || splitTimeMs >= endMs) {
       return null
     }
 
-    // 辅助函数：毫秒转时间戳
     const msToTimeStamp = (ms: number): TimeStamp => {
       const totalSeconds = Math.floor(ms / 1000)
       return {
@@ -392,39 +430,30 @@ export const useSubtitleStore = defineStore('subtitle', () => {
       }
     }
 
-    // 保存原始数据用于历史记录
     const originalEntry = { ...entry }
-
-    // 修改原字幕的结束时间为分割点
     entry.endTime = msToTimeStamp(splitTimeMs)
 
-    // 创建新字幕，从分割点开始到原结束时间
-    const index = entries.value.findIndex((e) => e.id === entryId)
+    const index = currentEntries.findIndex((e) => e.id === entryId)
     const newEntry: SubtitleEntry = {
-      id: entryId + 1, // 临时 id，后面会重新编号
+      id: entryId + 1,
       startTime: msToTimeStamp(splitTimeMs),
       endTime: msToTimeStamp(endMs),
-      text: entry.text, // 复制原文本
+      text: entry.text,
     }
 
-    // 在原字幕后面插入新字幕
-    entries.value.splice(index + 1, 0, newEntry)
+    currentEntries.splice(index + 1, 0, newEntry)
 
-    // 重新编号：从 1 开始连续编号
-    entries.value.forEach((e, i) => {
+    currentEntries.forEach((e, i) => {
       e.id = i + 1
     })
 
-    // 获取新字幕的实际 id（重新编号后）
     const newId = index + 2
-
-    // 获取分割后的新字幕，深拷贝保存
-    const newEntryData = entries.value.find((e) => e.id === newId)
+    const newEntryData = currentEntries.find((e) => e.id === newId)
 
     addHistory({
       type: HistoryActionType.SPLIT,
       timestamp: Date.now(),
-      entryId: index + 1, // 使用重新编号后的 id
+      entryId: index + 1,
       before: {
         ...originalEntry,
         startTime: { ...originalEntry.startTime },
@@ -456,11 +485,10 @@ export const useSubtitleStore = defineStore('subtitle', () => {
 
   // 新增字幕
   const addEntry = (afterId?: number) => {
-    // 从配置获取新增字幕时长（秒转毫秒）
     const configStore = useConfigStore()
     const DEFAULT_DURATION_MS = configStore.config.newSubtitleDuration * 1000
+    const currentEntries = entries.value
 
-    // 辅助函数：毫秒转时间戳
     const msToTimeStamp = (ms: number): TimeStamp => {
       const totalSeconds = Math.floor(ms / 1000)
       return {
@@ -471,43 +499,36 @@ export const useSubtitleStore = defineStore('subtitle', () => {
       }
     }
 
-    // 计算新增字幕的时间
     let startTime: TimeStamp
     let endTime: TimeStamp
 
     if (afterId !== undefined) {
-      // 在指定字幕后面插入
-      const afterEntry = entries.value.find((e) => e.id === afterId)
+      const afterEntry = currentEntries.find((e) => e.id === afterId)
 
       if (afterEntry) {
-        // 新字幕的开始时间 = 前一个字幕的结束时间
         const newStartMs = timeStampToMs(afterEntry.endTime)
         const newEndMs = newStartMs + DEFAULT_DURATION_MS
 
         startTime = msToTimeStamp(newStartMs)
         endTime = msToTimeStamp(newEndMs)
       } else {
-        // 找不到指定字幕，使用默认时间
         startTime = { hours: 0, minutes: 0, seconds: 0, milliseconds: 0 }
         endTime = { hours: 0, minutes: 0, seconds: 3, milliseconds: 0 }
       }
-    } else if (entries.value.length > 0) {
-      // 在末尾添加，时间接在最后一个字幕之后
-      const lastEntry = entries.value[entries.value.length - 1]
+    } else if (currentEntries.length > 0) {
+      const lastEntry = currentEntries[currentEntries.length - 1]!
       const newStartMs = timeStampToMs(lastEntry.endTime)
       const newEndMs = newStartMs + DEFAULT_DURATION_MS
 
       startTime = msToTimeStamp(newStartMs)
       endTime = msToTimeStamp(newEndMs)
     } else {
-      // 空列表，使用默认时间
       startTime = { hours: 0, minutes: 0, seconds: 0, milliseconds: 0 }
       endTime = { hours: 0, minutes: 0, seconds: 3, milliseconds: 0 }
     }
 
-    // 临时 id，插入后会重新编号
-    const tempId = entries.value.length > 0
-      ? Math.max(...entries.value.map((e) => e.id)) + 1
+    const tempId = currentEntries.length > 0
+      ? Math.max(...currentEntries.map((e) => e.id)) + 1
       : 1
 
     const newEntry: SubtitleEntry = {
@@ -517,23 +538,20 @@ export const useSubtitleStore = defineStore('subtitle', () => {
       text: '',
     }
 
-    // 插入字幕
     if (afterId !== undefined) {
-      const index = entries.value.findIndex((e) => e.id === afterId)
-      entries.value.splice(index + 1, 0, newEntry)
+      const index = currentEntries.findIndex((e) => e.id === afterId)
+      currentEntries.splice(index + 1, 0, newEntry)
     } else {
-      entries.value.push(newEntry)
+      currentEntries.push(newEntry)
     }
 
-    // 重新编号：从 1 开始连续编号
-    entries.value.forEach((e, i) => {
+    currentEntries.forEach((e, i) => {
       e.id = i + 1
     })
 
-    // 找到新插入字幕的实际 id
     const insertedIndex = afterId !== undefined
-      ? entries.value.findIndex((e) => e.id === afterId) + 1
-      : entries.value.length
+      ? currentEntries.findIndex((e) => e.id === afterId) + 1
+      : currentEntries.length
     const newId = insertedIndex
 
     addHistory({
@@ -541,7 +559,7 @@ export const useSubtitleStore = defineStore('subtitle', () => {
       timestamp: Date.now(),
       entryId: newId,
       before: {},
-      after: { ...entries.value[insertedIndex - 1] },
+      after: { ...currentEntries[insertedIndex - 1] },
     })
 
     currentEntryId.value = newId
@@ -552,13 +570,11 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     return newId
   }
 
-  // 移除标点符号的辅助函数
+  // 移除标点符号
   const removePunctuationFromText = (text: string): string => {
-    // 移除中文标点和英文标点
     return text.replace(/[，。！？、；：""''（）《》【】…—,.!?;:'"()\[\]{}]/g, '')
   }
 
-  // 为单条字幕移除标点符号
   const removePunctuationForEntry = (entryId: number) => {
     const entry = entries.value.find((e) => e.id === entryId)
     if (!entry) return
@@ -569,7 +585,6 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     }
   }
 
-  // 批量去除标点符号
   const removePunctuation = () => {
     entries.value.forEach((entry) => {
       entry.text = removePunctuationFromText(entry.text)
@@ -585,7 +600,6 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     })
   }
 
-  // 批量去除 HTML 标签
   const removeHTMLTags = () => {
     entries.value.forEach((entry) => {
       entry.text = entry.text.replace(/<[^>]*>/g, '')
@@ -601,19 +615,14 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     })
   }
 
-  // 为文本添加中英文空格的辅助函数
   const addCJKSpacesToText = (text: string): string => {
     let result = text
-    // 在中文和英文/数字之间添加空格（中文在前）
     result = result.replace(/([\u4e00-\u9fa5])([A-Za-z0-9])/g, '$1 $2')
-    // 在英文/数字和中文之间添加空格（英文/数字在前）
     result = result.replace(/([A-Za-z0-9])([\u4e00-\u9fa5])/g, '$1 $2')
-    // 避免重复空格
     result = result.replace(/\s+/g, ' ')
     return result
   }
 
-  // 为单条字幕添加中英文空格
   const addSpacesForEntry = (entryId: number) => {
     const entry = entries.value.find((e) => e.id === entryId)
     if (!entry) return
@@ -624,7 +633,6 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     }
   }
 
-  // 批量在中英文/中文数字之间添加空格
   const addSpacesBetweenCJKAndAlphanumeric = () => {
     entries.value.forEach((entry) => {
       entry.text = addCJKSpacesToText(entry.text)
@@ -640,30 +648,37 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     })
   }
 
+
   // 添加历史记录
   const addHistory = (action: HistoryAction) => {
+    if (!tabManager.activeTab) return
+    
+    const tab = tabManager.activeTab
     // 清除当前位置之后的历史
-    history.value = history.value.slice(0, historyIndex.value + 1)
-    history.value.push(action)
-    historyIndex.value++
+    tab.subtitle.history = tab.subtitle.history.slice(0, tab.subtitle.historyIndex + 1)
+    tab.subtitle.history.push(action)
+    tab.subtitle.historyIndex++
 
     // 限制历史记录数量
-    if (history.value.length > 100) {
-      history.value.shift()
-      historyIndex.value--
+    if (tab.subtitle.history.length > 100) {
+      tab.subtitle.history.shift()
+      tab.subtitle.historyIndex--
     }
   }
 
   // 撤销
   const undo = () => {
-    if (!canUndo.value) return
+    if (!canUndo.value || !tabManager.activeTab) return
 
-    const action = history.value[historyIndex.value]
+    const tab = tabManager.activeTab
+    const action = tab.subtitle.history[tab.subtitle.historyIndex]
     if (!action) return
+
+    const currentEntries = entries.value
 
     switch (action.type) {
       case HistoryActionType.TEXT_EDIT: {
-        const entry = entries.value.find((e) => e.id === action.entryId)
+        const entry = currentEntries.find((e) => e.id === action.entryId)
         if (entry && action.before.text !== undefined) {
           entry.text = action.before.text
         }
@@ -671,7 +686,7 @@ export const useSubtitleStore = defineStore('subtitle', () => {
       }
 
       case HistoryActionType.TIME_EDIT: {
-        const entry = entries.value.find((e) => e.id === action.entryId)
+        const entry = currentEntries.find((e) => e.id === action.entryId)
         if (entry) {
           if (action.before.startTime) {
             entry.startTime = { ...action.before.startTime }
@@ -686,19 +701,16 @@ export const useSubtitleStore = defineStore('subtitle', () => {
       }
 
       case HistoryActionType.SPLIT: {
-        // 恢复原字幕的结束时间
-        const entry = entries.value.find((e) => e.id === action.entryId)
+        const entry = currentEntries.find((e) => e.id === action.entryId)
         if (entry && action.before.endTime) {
           entry.endTime = { ...action.before.endTime }
         }
 
-        // 删除分割产生的新字幕
         if (action.newEntryId !== undefined) {
-          const newEntryIndex = entries.value.findIndex((e) => e.id === action.newEntryId)
+          const newEntryIndex = currentEntries.findIndex((e) => e.id === action.newEntryId)
           if (newEntryIndex !== -1) {
-            entries.value.splice(newEntryIndex, 1)
-            // 重新编号
-            entries.value.forEach((e, i) => {
+            currentEntries.splice(newEntryIndex, 1)
+            currentEntries.forEach((e, i) => {
               e.id = i + 1
             })
           }
@@ -710,20 +722,23 @@ export const useSubtitleStore = defineStore('subtitle', () => {
       }
     }
 
-    historyIndex.value--
+    tab.subtitle.historyIndex--
   }
 
   // 重做
   const redo = () => {
-    if (!canRedo.value) return
+    if (!canRedo.value || !tabManager.activeTab) return
 
-    historyIndex.value++
-    const action = history.value[historyIndex.value]
+    const tab = tabManager.activeTab
+    tab.subtitle.historyIndex++
+    const action = tab.subtitle.history[tab.subtitle.historyIndex]
     if (!action) return
+
+    const currentEntries = entries.value
 
     switch (action.type) {
       case HistoryActionType.TEXT_EDIT: {
-        const entry = entries.value.find((e) => e.id === action.entryId)
+        const entry = currentEntries.find((e) => e.id === action.entryId)
         if (entry && action.after.text !== undefined) {
           entry.text = action.after.text
         }
@@ -731,7 +746,7 @@ export const useSubtitleStore = defineStore('subtitle', () => {
       }
 
       case HistoryActionType.TIME_EDIT: {
-        const entry = entries.value.find((e) => e.id === action.entryId)
+        const entry = currentEntries.find((e) => e.id === action.entryId)
         if (entry) {
           if (action.after.startTime) {
             entry.startTime = { ...action.after.startTime }
@@ -746,15 +761,13 @@ export const useSubtitleStore = defineStore('subtitle', () => {
       }
 
       case HistoryActionType.SPLIT: {
-        // 恢复分割后的原字幕结束时间
-        const entry = entries.value.find((e) => e.id === action.entryId)
+        const entry = currentEntries.find((e) => e.id === action.entryId)
         if (entry && action.after.endTime) {
           entry.endTime = { ...action.after.endTime }
         }
 
-        // 重新插入分割产生的新字幕
         if (action.newEntry && action.newEntryId !== undefined) {
-          const insertIndex = entries.value.findIndex((e) => e.id === action.entryId)
+          const insertIndex = currentEntries.findIndex((e) => e.id === action.entryId)
           if (insertIndex !== -1) {
             const newEntry: SubtitleEntry = {
               id: action.newEntryId,
@@ -762,9 +775,8 @@ export const useSubtitleStore = defineStore('subtitle', () => {
               endTime: action.newEntry.endTime!,
               text: action.newEntry.text || '',
             }
-            entries.value.splice(insertIndex + 1, 0, newEntry)
-            // 重新编号
-            entries.value.forEach((e, i) => {
+            currentEntries.splice(insertIndex + 1, 0, newEntry)
+            currentEntries.forEach((e, i) => {
               e.id = i + 1
             })
           }
@@ -779,22 +791,25 @@ export const useSubtitleStore = defineStore('subtitle', () => {
 
   // 查找
   const search = (query: string) => {
-    searchQuery.value = query
-    searchResults.value = []
-    currentSearchIndex.value = 0
+    if (!tabManager.activeTab) return []
+    
+    const tab = tabManager.activeTab
+    tab.subtitle.searchQuery = query
+    tab.subtitle.searchResults = []
+    tab.subtitle.currentSearchIndex = 0
 
     if (!query) return []
 
     entries.value.forEach((entry) => {
       if (entry.text.toLowerCase().includes(query.toLowerCase())) {
-        searchResults.value.push(entry.id)
+        tab.subtitle.searchResults.push(entry.id)
       }
     })
 
-    return searchResults.value
+    return tab.subtitle.searchResults
   }
 
-  // 格式化时间戳为字符串
+  // 格式化时间戳
   const formatTimeStamp = (time: TimeStamp): string => {
     const pad = (num: number, size: number) => num.toString().padStart(size, '0')
     return `${pad(time.hours, 2)}:${pad(time.minutes, 2)}:${pad(time.seconds, 2)},${pad(time.milliseconds, 3)}`
@@ -802,53 +817,53 @@ export const useSubtitleStore = defineStore('subtitle', () => {
 
   // 保存到文件
   const saveToFile = async () => {
-    if (!srtFile.value) {
+    const filePath = currentFilePath.value
+    if (!filePath) {
       throw new Error('No file loaded')
     }
 
-    // 调用 Tauri 命令保存文件
     const { invoke } = await import('@tauri-apps/api/core')
 
     try {
       await invoke('write_srt', {
-        filePath: srtFile.value.path,
+        filePath,
         entries: entries.value,
       })
 
-      // 保存成功后，记录当前历史索引为已保存点
-      savedHistoryIndex.value = historyIndex.value
-      logger.info('文件保存成功', { path: srtFile.value.path, entries: entries.value.length })
+      if (tabManager.activeTab) {
+        tabManager.activeTab.subtitle.savedHistoryIndex = tabManager.activeTab.subtitle.historyIndex
+      }
+      logger.info('文件保存成功', { path: filePath, entries: entries.value.length })
     } catch (error) {
-      logger.error('文件保存失败', { path: srtFile.value.path, error: String(error) })
+      logger.error('文件保存失败', { path: filePath, error: String(error) })
       throw error
     }
   }
 
-  // 获取当前文件路径
-  const currentFilePath = computed(() => srtFile.value?.path || null)
-
-  // 跳转到下一个搜索结果
+  // 跳转搜索结果
   const nextSearchResult = () => {
-    if (searchResults.value.length === 0) return
+    if (!tabManager.activeTab) return
+    const tab = tabManager.activeTab
+    if (tab.subtitle.searchResults.length === 0) return
 
-    currentSearchIndex.value =
-      (currentSearchIndex.value + 1) % searchResults.value.length
-    currentEntryId.value = searchResults.value[currentSearchIndex.value] ?? null
+    tab.subtitle.currentSearchIndex =
+      (tab.subtitle.currentSearchIndex + 1) % tab.subtitle.searchResults.length
+    currentEntryId.value = tab.subtitle.searchResults[tab.subtitle.currentSearchIndex] ?? null
   }
 
-  // 跳转到上一个搜索结果
   const prevSearchResult = () => {
-    if (searchResults.value.length === 0) return
+    if (!tabManager.activeTab) return
+    const tab = tabManager.activeTab
+    if (tab.subtitle.searchResults.length === 0) return
 
-    currentSearchIndex.value =
-      (currentSearchIndex.value - 1 + searchResults.value.length) %
-      searchResults.value.length
-    currentEntryId.value = searchResults.value[currentSearchIndex.value] ?? null
+    tab.subtitle.currentSearchIndex =
+      (tab.subtitle.currentSearchIndex - 1 + tab.subtitle.searchResults.length) %
+      tab.subtitle.searchResults.length
+    currentEntryId.value = tab.subtitle.searchResults[tab.subtitle.currentSearchIndex] ?? null
   }
 
   return {
     // 状态
-    srtFile,
     entries,
     currentEntryId,
     editingEntryId,

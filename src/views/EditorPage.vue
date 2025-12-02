@@ -8,10 +8,12 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useSubtitleStore } from '@/stores/subtitle'
 import { useAudioStore } from '@/stores/audio'
 import { useConfigStore } from '@/stores/config'
+import { useTabManagerStore } from '@/stores/tabManager'
 import { timeStampToMs } from '@/utils/time'
 import type { SRTFile, AudioFile, TimeStamp } from '@/types/subtitle'
 import WaveformViewer from '@/components/WaveformViewer.vue'
 import SettingsDialog from '@/components/SettingsDialog.vue'
+import TitleBar from '@/components/TitleBar.vue'
 import { DocumentCopy, VideoPlay, Delete, PriceTag, Document, Setting, Plus, Scissor, Search, ArrowDown, Switch } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
@@ -36,6 +38,7 @@ const router = useRouter()
 const subtitleStore = useSubtitleStore()
 const audioStore = useAudioStore()
 const configStore = useConfigStore()
+const tabManager = useTabManagerStore()
 
 // UI 状态
 const searchText = ref('')
@@ -46,8 +49,8 @@ const editingText = ref('')
 const editingStartTime = ref('')
 const editingEndTime = ref('')
 const subtitleListContainer = ref<HTMLElement | null>(null)
-const searchInputRef = ref<InstanceType<typeof HTMLInputElement> | null>(null)
-const replaceInputRef = ref<InstanceType<typeof HTMLInputElement> | null>(null)
+const searchInputRef = ref<any>(null) // el-input 组件
+const replaceInputRef = ref<any>(null) // el-input 组件
 const textareaInputRef = ref<any>(null) // el-input 的 ref
 const subtitleItemRefs: Record<number, HTMLElement | null> = {}
 const isUserEditing = ref(false) // 标记是否是用户在编辑
@@ -95,6 +98,19 @@ watch(currentEntry, (entry) => {
     editingStartTime.value = subtitleStore.formatTimeStamp(entry.startTime)
     editingEndTime.value = subtitleStore.formatTimeStamp(entry.endTime)
   }
+})
+
+// 监听 tab 切换，更新选中的字幕
+watch(() => tabManager.activeTabId, () => {
+  // 切换 tab 时，选中第一条字幕
+  if (subtitleStore.entries.length > 0) {
+    selectedEntryId.value = subtitleStore.entries[0]?.id ?? null
+  } else {
+    selectedEntryId.value = null
+  }
+  // 清空搜索
+  searchText.value = ''
+  showSearchPanel.value = false
 })
 
 // 搜索字幕文本
@@ -282,6 +298,12 @@ let unlistenOpenFile: (() => void) | null = null
 
 // 初始化时选中第一条字幕，设置菜单监听和快捷键
 onMounted(async () => {
+  // 如果没有打开的 tab，跳转到欢迎页
+  if (!tabManager.hasTabs) {
+    router.push('/')
+    return
+  }
+
   if (subtitleStore.entries.length > 0) {
     selectedEntryId.value = subtitleStore.entries[0]?.id ?? null
   }
@@ -767,10 +789,10 @@ const handleTimeChange = async (type: 'start' | 'end') => {
     // 解析时间字符串为 TimeStamp 对象
     const match = timeValue.match(timeRegex)!
     const newTime: TimeStamp = {
-      hours: parseInt(match[1]),
-      minutes: parseInt(match[2]),
-      seconds: parseInt(match[3]),
-      milliseconds: parseInt(match[4])
+      hours: parseInt(match[1] || '0'),
+      minutes: parseInt(match[2] || '0'),
+      seconds: parseInt(match[3] || '0'),
+      milliseconds: parseInt(match[4] || '0')
     }
 
     // 如果正在播放，暂停
@@ -979,15 +1001,6 @@ const handleZoomIn = () => {
 const handleZoomOut = () => {
   if (canZoomOut.value) {
     waveformViewerRef.value?.zoomOut()
-  }
-}
-
-// 开始拖拽窗口
-// 标题栏鼠标按下事件 - 开始拖拽窗口
-const onTitlebarMousedown = async (e: MouseEvent) => {
-  if (e.button === 0) {
-    e.preventDefault()
-    await getCurrentWindow().startDragging()
   }
 }
 
@@ -1312,10 +1325,8 @@ const handleKeydown = (e: KeyboardEvent) => {
 
 <template>
   <div class="editor-page">
-    <!-- 标题栏区域（可拖拽） -->
-    <div class="titlebar" @mousedown.left="onTitlebarMousedown">
-      <span class="titlebar-title">SRT 字幕编辑器</span>
-    </div>
+    <!-- 标题栏区域（含标签页） -->
+    <TitleBar />
 
     <!-- 时间轴区域：顶部全宽 -->
     <div v-if="hasAudio || audioStore.isGeneratingWaveform" class="timeline-section">
@@ -2815,28 +2826,7 @@ mark {
   height: 1em;
 }
 
-/* 标题栏 */
-.titlebar {
-  height: 38px;
-  background: white;
-  border-bottom: 1px solid #e5e7eb;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  flex-shrink: 0;
-  -webkit-app-region: drag;
-  -webkit-user-select: none;
-  user-select: none;
-  cursor: default;
-}
 
-.titlebar-title {
-  font-size: 13px;
-  font-weight: 500;
-  color: #333;
-  pointer-events: none;
-}
 
 
 
