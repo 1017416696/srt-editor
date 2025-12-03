@@ -2,6 +2,19 @@
   <div class="timeline-editor">
     <!-- 时间轴主区域 -->
     <div class="timeline-container" ref="timelineContainerRef">
+      <!-- 波形加载动画 - 相对于 timeline-container 定位 -->
+      <div v-if="props.isGeneratingWaveform" class="waveform-loading-overlay">
+        <div class="waveform-loading-box">
+          <div class="spinner"></div>
+          <div class="loading-message">正在生成波形数据...</div>
+          <div class="progress-bar-container">
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" :style="{ width: props.waveformProgress + '%' }"></div>
+            </div>
+            <div class="progress-text">{{ props.waveformProgress }}%</div>
+          </div>
+        </div>
+      </div>
       <!-- 波形和字幕轨道 -->
       <div class="timeline-track-area" ref="trackAreaRef" @scroll="handleScroll" @wheel="handleWheel">
         <div class="timeline-content" :style="{ width: timelineWidth + 'px' }" @click="handleTimelineClick">
@@ -21,21 +34,6 @@
           <div class="waveform-layer" ref="waveformRef">
             <!-- Canvas 波形渲染 -->
             <canvas ref="waveformCanvasRef" class="waveform-canvas"></canvas>
-            <!-- 加载动画 - 只在生成波形时显示 -->
-            <div v-if="props.isGeneratingWaveform" class="waveform-loading-overlay">
-              <div class="waveform-loading-box">
-                <!-- 纯 CSS 旋转动画 -->
-                <div class="spinner"></div>
-                <div class="loading-message">正在生成波形数据...</div>
-                <!-- 纯 CSS 进度条 -->
-                <div class="progress-bar-container">
-                  <div class="progress-bar-bg">
-                    <div class="progress-bar-fill" :style="{ width: props.waveformProgress + '%' }"></div>
-                  </div>
-                  <div class="progress-text">{{ props.waveformProgress }}%</div>
-                </div>
-              </div>
-            </div>
           </div>
 
           <!-- 字幕轨道 -->
@@ -1713,6 +1711,7 @@ defineExpose({
   display: flex;
   flex-direction: column;
   min-height: 0;
+  position: relative;
 }
 
 /* 时间刻度尺 */
@@ -1775,18 +1774,19 @@ defineExpose({
   /* width 和 left 由 JS 动态设置 */
 }
 
-/* 波形加载动画 - 纯 CSS 实现 */
+/* 波形加载动画 - 只遮罩时间轴区域 */
 .waveform-loading-overlay {
-  position: fixed;
+  position: absolute;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(248, 250, 252, 0.95);
+  background: rgba(248, 250, 252, 0.92);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999;
+  z-index: 100;
+  pointer-events: auto;
 }
 
 .waveform-loading-box {
