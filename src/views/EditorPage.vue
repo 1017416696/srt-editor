@@ -59,6 +59,7 @@ const isUserSelectingEntry = ref(false) // 标记用户是否在手动选择字�
 const isScissorMode = ref(false) // 剪刀模式：分割字幕
 const isSnapEnabled = ref(false) // 吸附模式：拖拽时自动吸附
 const isAltPressed = ref(false) // Alt 键是否按下
+const selectedSubtitleIds = ref<number[]>([]) // 多选的字幕 ID 列表
 const showSearchPanel = ref(false) // 是否显示搜索面板
 const activePanel = ref<'list' | 'search'>('list') // 当前激活的面板
 const showSettingsDialog = ref(false) // 是否显示设置弹窗
@@ -1093,8 +1094,13 @@ const handleSubtitlesUpdate = (updates: Array<{ id: number; startTime: TimeStamp
 
 // 处理字幕选择变化
 const handleSubtitlesSelect = (ids: number[]) => {
-  // 可以在这里处理选择变化，比如更新 UI
-  // 目前主要用于多选状态同步
+  // 更新多选状态
+  selectedSubtitleIds.value = ids
+  
+  // 如果只选中了一条，同步到 selectedEntryId
+  if (ids.length === 1) {
+    selectedEntryId.value = ids[0] ?? null
+  }
 }
 
 // 处理拖动开始（记录原始时间）
@@ -1205,6 +1211,37 @@ const handleScissor = () => {
 
   // 切换剪刀模式
   isScissorMode.value = !isScissorMode.value
+}
+
+// 合并字幕
+const handleMergeSubtitles = async () => {
+  if (selectedSubtitleIds.value.length < 2) {
+    return
+  }
+
+  // 如果正在播放，暂停
+  if (audioStore.playerState.isPlaying) {
+    audioStore.pause()
+  }
+
+  // 清除可能存在的自动保存计时器，避免干扰
+  if (autoSaveTimer) {
+    clearTimeout(autoSaveTimer)
+    autoSaveTimer = null
+  }
+
+  const newId = subtitleStore.mergeEntries(selectedSubtitleIds.value)
+
+  if (newId) {
+    // 合并成功，选中合并后的字幕
+    selectedEntryId.value = newId
+    selectedSubtitleIds.value = [newId]
+
+    // 保存文件
+    if (subtitleStore.currentFilePath) {
+      await subtitleStore.saveToFile()
+    }
+  }
 }
 
 // 对齐字幕到波形（同时调整开始和结束时间）
@@ -1529,6 +1566,10 @@ const handleKeydown = (e: KeyboardEvent) => {
     // x 键：开启/关闭分割模式
     e.preventDefault()
     handleScissor()
+  } else if (e.key === 'm' || e.key === 'M') {
+    // m 键：合并选中的字幕
+    e.preventDefault()
+    handleMergeSubtitles()
   } else if ((e.key === 's' || e.key === 'S') && hasAudio.value) {
     // s 键：开启/关闭吸附模式
     e.preventDefault()
@@ -1736,6 +1777,20 @@ const handleKeydown = (e: KeyboardEvent) => {
             title="分割字幕 (X)"
           >
             <el-icon><Scissor /></el-icon>
+          </button>
+          <button
+            class="sidebar-btn"
+            @click="handleMergeSubtitles"
+            :disabled="selectedSubtitleIds.length < 2"
+            title="合并字幕 (M)"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 4v16M4 4h4M4 20h4"/>
+              <path d="M20 4v16M20 4h-4M20 20h-4"/>
+              <path d="M9 12h2M13 12h2"/>
+              <path d="M9 12l2-2M9 12l2 2"/>
+              <path d="M15 12l-2-2M15 12l-2 2"/>
+            </svg>
           </button>
           <button
             class="sidebar-btn"

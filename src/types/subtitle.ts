@@ -67,6 +67,7 @@ export enum HistoryActionType {
   DELETE = 'DELETE', // 删除字幕
   ADD = 'ADD', // 新增字幕
   SPLIT = 'SPLIT', // 分割字幕
+  MERGE = 'MERGE', // 合并字幕
   BATCH = 'BATCH', // 批量操作
 }
 
@@ -83,6 +84,8 @@ export interface HistoryAction {
   // 分割操作专用字段
   newEntryId?: number // 分割产生的新字幕 ID
   newEntry?: Partial<SubtitleEntry> // 分割产生的新字幕数据
+  // 合并操作专用字段
+  mergedEntries?: Partial<SubtitleEntry>[] // 被合并的所有字幕数据（用于撤销）
 }
 
 /**

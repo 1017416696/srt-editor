@@ -51,6 +51,7 @@ export const useConfigStore = defineStore('config', () => {
     { key: 'Ctrl+Shift+Z', description: '重做', action: 'redo' },
     { key: 'Ctrl+,', description: '设置', action: 'settings' },
     { key: 'X', description: '分割字幕', action: 'split-subtitle' },
+    { key: 'M', description: '合并字幕', action: 'merge-subtitles' },
     { key: 'S', description: '拖拽吸附', action: 'toggle-snap' },
     { key: 'A', description: '对齐到波形', action: 'align-to-waveform' },
     { key: 'Ctrl+=', description: '放大波形', action: 'zoom-in' },

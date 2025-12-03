@@ -479,6 +479,93 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     return newId
   }
 
+  // 合并字幕
+  const mergeEntries = (entryIds: number[]) => {
+    if (entryIds.length < 2) return null
+
+    const currentEntries = entries.value
+    
+    // 按 ID 排序，确保顺序正确
+    const sortedIds = [...entryIds].sort((a, b) => a - b)
+    
+    // 获取要合并的字幕
+    const entriesToMerge = sortedIds
+      .map(id => currentEntries.find(e => e.id === id))
+      .filter((e): e is SubtitleEntry => e !== undefined)
+    
+    if (entriesToMerge.length < 2) return null
+
+    // 检查是否连续（ID 必须相邻）
+    for (let i = 1; i < entriesToMerge.length; i++) {
+      const prevIndex = currentEntries.findIndex(e => e.id === entriesToMerge[i - 1]!.id)
+      const currIndex = currentEntries.findIndex(e => e.id === entriesToMerge[i]!.id)
+      if (currIndex !== prevIndex + 1) {
+        logger.warn('合并字幕失败：字幕不连续')
+        return null
+      }
+    }
+
+    // 保存原始数据用于撤销
+    const mergedEntriesData = entriesToMerge.map(e => ({
+      ...e,
+      startTime: { ...e.startTime },
+      endTime: { ...e.endTime },
+    }))
+
+    // 第一条字幕作为合并目标
+    const firstEntry = entriesToMerge[0]!
+    const lastEntry = entriesToMerge[entriesToMerge.length - 1]!
+    const firstIndex = currentEntries.findIndex(e => e.id === firstEntry.id)
+
+    // 合并后的数据
+    const mergedText = entriesToMerge.map(e => e.text).join(' ')
+    const mergedStartTime = { ...firstEntry.startTime }
+    const mergedEndTime = { ...lastEntry.endTime }
+
+    // 更新第一条字幕
+    firstEntry.text = mergedText
+    firstEntry.endTime = mergedEndTime
+
+    // 删除其余字幕（从后往前删，避免索引问题）
+    for (let i = entriesToMerge.length - 1; i > 0; i--) {
+      const entryToRemove = entriesToMerge[i]!
+      const removeIndex = currentEntries.findIndex(e => e.id === entryToRemove.id)
+      if (removeIndex !== -1) {
+        currentEntries.splice(removeIndex, 1)
+      }
+    }
+
+    // 重新编号
+    currentEntries.forEach((e, i) => {
+      e.id = i + 1
+    })
+
+    const newId = firstIndex + 1
+
+    // 记录历史
+    addHistory({
+      type: HistoryActionType.MERGE,
+      timestamp: Date.now(),
+      entryId: newId,
+      before: mergedEntriesData[0]!,
+      after: {
+        id: newId,
+        startTime: mergedStartTime,
+        endTime: mergedEndTime,
+        text: mergedText,
+      },
+      mergedEntries: mergedEntriesData,
+      description: `合并 ${mergedEntriesData.length} 条字幕`,
+    })
+
+    detectTimeConflicts()
+    assignSubtitleToTracks()
+
+    logger.info('合并字幕', { entryIds: sortedIds, newEntryId: newId })
+
+    return newId
+  }
+
   // 新增字幕
   const addEntry = (afterId?: number) => {
     const configStore = useConfigStore()
@@ -718,6 +805,36 @@ export const useSubtitleStore = defineStore('subtitle', () => {
         assignSubtitleToTracks()
         break
       }
+
+      case HistoryActionType.MERGE: {
+        // 撤销合并：删除合并后的字幕，恢复所有原始字幕
+        if (action.mergedEntries && action.mergedEntries.length > 0) {
+          const mergedEntryIndex = currentEntries.findIndex((e) => e.id === action.entryId)
+          if (mergedEntryIndex !== -1) {
+            // 删除合并后的字幕
+            currentEntries.splice(mergedEntryIndex, 1)
+            
+            // 恢复所有原始字幕
+            const restoredEntries = action.mergedEntries.map(e => ({
+              id: e.id!,
+              startTime: { ...e.startTime! },
+              endTime: { ...e.endTime! },
+              text: e.text || '',
+            }))
+            
+            currentEntries.splice(mergedEntryIndex, 0, ...restoredEntries)
+            
+            // 重新编号
+            currentEntries.forEach((e, i) => {
+              e.id = i + 1
+            })
+          }
+        }
+
+        detectTimeConflicts()
+        assignSubtitleToTracks()
+        break
+      }
     }
 
     tab.subtitle.historyIndex--
@@ -774,6 +891,35 @@ export const useSubtitleStore = defineStore('subtitle', () => {
               text: action.newEntry.text || '',
             }
             currentEntries.splice(insertIndex + 1, 0, newEntry)
+            currentEntries.forEach((e, i) => {
+              e.id = i + 1
+            })
+          }
+        }
+
+        detectTimeConflicts()
+        assignSubtitleToTracks()
+        break
+      }
+
+      case HistoryActionType.MERGE: {
+        // 重做合并：删除原始字幕，创建合并后的字幕
+        if (action.mergedEntries && action.mergedEntries.length > 0 && action.after) {
+          const firstEntryIndex = currentEntries.findIndex((e) => e.id === action.entryId)
+          if (firstEntryIndex !== -1) {
+            // 删除所有原始字幕
+            currentEntries.splice(firstEntryIndex, action.mergedEntries.length)
+            
+            // 插入合并后的字幕
+            const mergedEntry: SubtitleEntry = {
+              id: action.entryId,
+              startTime: { ...action.after.startTime! },
+              endTime: { ...action.after.endTime! },
+              text: action.after.text || '',
+            }
+            currentEntries.splice(firstEntryIndex, 0, mergedEntry)
+            
+            // 重新编号
             currentEntries.forEach((e, i) => {
               e.id = i + 1
             })
@@ -888,6 +1034,7 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     endDragging,
     deleteEntry,
     splitEntry,
+    mergeEntries,
     addEntry,
     removePunctuation,
     removePunctuationForEntry,
