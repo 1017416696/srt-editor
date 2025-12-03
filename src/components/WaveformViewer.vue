@@ -4,15 +4,18 @@
     <div class="timeline-container" ref="timelineContainerRef">
       <!-- 波形加载动画 - 相对于 timeline-container 定位 -->
       <div v-if="props.isGeneratingWaveform" class="waveform-loading-overlay">
-        <div class="waveform-loading-box">
-          <div class="spinner"></div>
-          <div class="loading-message">正在生成波形数据...</div>
-          <div class="progress-bar-container">
-            <div class="progress-bar-bg">
-              <div class="progress-bar-fill" :style="{ width: props.waveformProgress + '%' }"></div>
-            </div>
-            <div class="progress-text">{{ props.waveformProgress }}%</div>
-          </div>
+        <!-- 波形动画 -->
+        <div class="waveform-bars">
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+          <div class="bar"></div>
+        </div>
+        <!-- 进度信息 -->
+        <div class="loading-info">
+          <span class="loading-text">生成波形</span>
+          <span class="loading-progress">{{ props.waveformProgress }}%</span>
         </div>
       </div>
       <!-- 波形和字幕轨道 -->
@@ -1781,89 +1784,55 @@ defineExpose({
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(248, 250, 252, 0.92);
+  background: rgba(248, 250, 252, 0.85);
+  backdrop-filter: blur(2px);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 12px;
   z-index: 100;
   pointer-events: auto;
 }
 
-.waveform-loading-box {
+/* 波形条动画 */
+.waveform-bars {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 16px;
-  padding: 24px 40px;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  gap: 3px;
+  height: 32px;
 }
 
-/* 旋转加载动画 */
-.spinner {
-  width: 40px;
-  height: 40px;
-  border: 4px solid #e5e7eb;
-  border-top-color: #3b82f6;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
+.waveform-bars .bar {
+  width: 4px;
+  background: linear-gradient(180deg, #3b82f6 0%, #60a5fa 100%);
+  border-radius: 2px;
+  animation: waveform-bounce 1s ease-in-out infinite;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+.waveform-bars .bar:nth-child(1) { height: 12px; animation-delay: 0s; }
+.waveform-bars .bar:nth-child(2) { height: 20px; animation-delay: 0.1s; }
+.waveform-bars .bar:nth-child(3) { height: 28px; animation-delay: 0.2s; }
+.waveform-bars .bar:nth-child(4) { height: 20px; animation-delay: 0.3s; }
+.waveform-bars .bar:nth-child(5) { height: 12px; animation-delay: 0.4s; }
+
+@keyframes waveform-bounce {
+  0%, 100% { transform: scaleY(0.4); opacity: 0.6; }
+  50% { transform: scaleY(1); opacity: 1; }
 }
 
-.loading-message {
-  font-size: 15px;
-  font-weight: 500;
-  color: #374151;
-}
-
-/* 进度条 */
-.progress-bar-container {
-  width: 200px;
+/* 进度信息 */
+.loading-info {
   display: flex;
-  flex-direction: column;
   align-items: center;
   gap: 8px;
+  font-size: 13px;
+  color: #64748b;
 }
 
-.progress-bar-bg {
-  width: 100%;
-  height: 8px;
-  background: #e5e7eb;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.progress-bar-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #3b82f6, #60a5fa);
-  border-radius: 4px;
-  transition: width 0.3s ease;
-}
-
-.progress-text {
-  font-size: 14px;
+.loading-progress {
   font-weight: 600;
   color: #3b82f6;
-}
-
-/* 旋转动画 */
-@keyframes rotate {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.is-loading {
-  animation: rotate 1s linear infinite;
 }
 
 /* 字幕轨道 */
