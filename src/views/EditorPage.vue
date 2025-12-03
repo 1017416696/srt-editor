@@ -887,13 +887,27 @@ const handleWaveformSeek = (time: number) => {
   audioStore.seek(time)
 }
 
+// 防抖保存定时器
+let saveDebounceTimer: ReturnType<typeof setTimeout> | null = null
+
+// 防抖保存函数（拖动结束后延迟保存）
+const debouncedSave = () => {
+  if (saveDebounceTimer) {
+    clearTimeout(saveDebounceTimer)
+  }
+  saveDebounceTimer = setTimeout(() => {
+    if (subtitleStore.currentFilePath) {
+      subtitleStore.saveToFile().catch(() => {
+        // 保存失败，静默处理
+      })
+    }
+  }, 500) // 500ms 防抖延迟
+}
+
 // 处理字幕时间更新（从波形 Region 拖拽）
 const handleSubtitleUpdate = (id: number, startTime: TimeStamp, endTime: TimeStamp) => {
-  console.log(`📝 Updating subtitle #${id} from waveform:`, { startTime, endTime })
-
   const entry = subtitleStore.entries.find((e) => e.id === id)
   if (!entry) {
-    console.warn(`⚠️ Subtitle #${id} not found`)
     return
   }
 
@@ -905,18 +919,12 @@ const handleSubtitleUpdate = (id: number, startTime: TimeStamp, endTime: TimeSta
   // 更新字幕时间
   subtitleStore.updateEntryTime(id, startTime, endTime)
 
-  // 自动保存
-  if (subtitleStore.currentFilePath) {
-    subtitleStore.saveToFile().catch((error) => {
-      // 保存失败，静默处理
-    })
-  }
+  // 使用防抖保存，避免拖动时频繁写入
+  debouncedSave()
 }
 
 // 处理批量字幕时间更新
 const handleSubtitlesUpdate = (updates: Array<{ id: number; startTime: TimeStamp; endTime: TimeStamp }>) => {
-  console.log(`📝 Batch updating ${updates.length} subtitles from waveform`)
-
   // 如果正在播放，暂停
   if (audioStore.playerState.isPlaying) {
     audioStore.pause()
@@ -927,12 +935,8 @@ const handleSubtitlesUpdate = (updates: Array<{ id: number; startTime: TimeStamp
     subtitleStore.updateEntryTime(id, startTime, endTime)
   })
 
-  // 自动保存
-  if (subtitleStore.currentFilePath) {
-    subtitleStore.saveToFile().catch((error) => {
-      // 保存失败，静默处理
-    })
-  }
+  // 使用防抖保存，避免拖动时频繁写入
+  debouncedSave()
 }
 
 // 处理字幕选择变化
