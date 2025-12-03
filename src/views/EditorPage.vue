@@ -15,7 +15,7 @@ import type { SRTFile, AudioFile, TimeStamp } from '@/types/subtitle'
 import WaveformViewer from '@/components/WaveformViewer.vue'
 import SettingsDialog from '@/components/SettingsDialog.vue'
 import TitleBar from '@/components/TitleBar.vue'
-import { DocumentCopy, VideoPlay, Delete, PriceTag, Document, Setting, DocumentAdd, Scissor, Search, ArrowDown, Switch, Plus } from '@element-plus/icons-vue'
+import { DocumentCopy, VideoPlay, Delete, PriceTag, Document, Setting, DocumentAdd, Scissor, Search, ArrowDown, Switch, Plus, Magnet, Guide } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 // Debounce helper function
@@ -1796,11 +1796,9 @@ const handleKeydown = (e: KeyboardEvent) => {
             class="sidebar-btn"
             @click="handleAlignToWaveform"
             :disabled="!hasAudio || !currentEntry"
-            title="对齐到波形 (A)"
+            title="波形对齐 (A)"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M2 12h4l3-9 4 18 3-9h6"/>
-            </svg>
+            <el-icon><Guide /></el-icon>
           </button>
           <button
             class="sidebar-btn"
@@ -1809,10 +1807,7 @@ const handleKeydown = (e: KeyboardEvent) => {
             :disabled="!hasAudio"
             :title="isSnapEnabled && isAltPressed ? '吸附已暂停 (松开Alt恢复)' : '拖拽吸附 (S) 按住Alt临时禁用'"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
-              <circle cx="12" cy="12" r="3"/>
-            </svg>
+            <el-icon><Magnet /></el-icon>
           </button>
         </div>
         <div class="sidebar-bottom">
