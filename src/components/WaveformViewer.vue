@@ -1218,6 +1218,50 @@ const handleResizeEnd = () => {
 // 波形配置
 const WAVEFORM_HEIGHT = 80
 
+// 缓存预处理后的波形数据（5点移动平均平滑处理）
+// 只在原始波形数据变化时重新计算，避免每次渲染都重复计算
+const smoothedWaveformCache = ref<number[]>([])
+const waveformDataCacheKey = ref<string>('')
+
+// 预处理波形数据：提取振幅并应用5点移动平均平滑
+const preprocessWaveformData = (data: number[]): number[] => {
+  if (!data || data.length === 0) return []
+
+  const isMinMaxFormat = data.length % 2 === 0 && data.length > 2
+  const numPoints = isMinMaxFormat ? data.length / 2 : data.length
+
+  // 提取每个采样点的振幅
+  const amplitudes: number[] = []
+  for (let i = 0; i < numPoints; i++) {
+    let amp = 0
+    if (isMinMaxFormat) {
+      const min = Math.abs(data[i * 2] ?? 0)
+      const max = Math.abs(data[i * 2 + 1] ?? 0)
+      amp = Math.max(min, max)
+    } else {
+      amp = Math.abs(data[i] ?? 0)
+    }
+    amplitudes.push(amp)
+  }
+
+  // 5点移动平均平滑处理（只计算一次）
+  const smoothed: number[] = []
+  for (let i = 0; i < amplitudes.length; i++) {
+    let sum = 0
+    let count = 0
+    for (let j = -2; j <= 2; j++) {
+      const idx = i + j
+      if (idx >= 0 && idx < amplitudes.length) {
+        sum += amplitudes[idx]
+        count++
+      }
+    }
+    smoothed.push(sum / count)
+  }
+
+  return smoothed
+}
+
 // 渲染波形到 Canvas - Screen Studio 风格
 const renderWaveform = (data: number[]) => {
   const canvas = waveformCanvasRef.value
@@ -1232,6 +1276,17 @@ const renderWaveform = (data: number[]) => {
     return
   }
 
+  // 检查缓存是否有效，无效则重新预处理
+  const cacheKey = `${data.length}-${data[0]}-${data[data.length - 1]}`
+  if (waveformDataCacheKey.value !== cacheKey) {
+    smoothedWaveformCache.value = preprocessWaveformData(data)
+    waveformDataCacheKey.value = cacheKey
+    console.log('📊 Waveform smoothing cache updated')
+  }
+
+  const smoothedData = smoothedWaveformCache.value
+  if (smoothedData.length === 0) return
+
   const width = timelineWidth.value
   const height = WAVEFORM_HEIGHT
   const dpr = window.devicePixelRatio || 1
@@ -1245,49 +1300,21 @@ const renderWaveform = (data: number[]) => {
   // 清空画布
   ctx.clearRect(0, 0, width, height)
 
-  const isMinMaxFormat = data.length % 2 === 0 && data.length > 2
-  const numPoints = isMinMaxFormat ? data.length / 2 : data.length
+  const numPoints = smoothedData.length
   const pointsPerPixel = numPoints / width
 
-  // 为每个像素计算振幅
-  const amplitudes: number[] = []
-
+  // 为每个像素从缓存的平滑数据中采样（快速操作）
+  const pixelAmplitudes: number[] = []
   for (let x = 0; x < width; x++) {
     const startIdx = Math.floor(x * pointsPerPixel)
     const endIdx = Math.min(Math.ceil((x + 1) * pointsPerPixel), numPoints)
 
     let amp = 0
-
-    if (isMinMaxFormat) {
-      for (let j = startIdx; j < endIdx; j++) {
-        const min = Math.abs(data[j * 2] ?? 0)
-        const max = Math.abs(data[j * 2 + 1] ?? 0)
-        const localMax = Math.max(min, max)
-        if (localMax > amp) amp = localMax
-      }
-    } else {
-      for (let j = startIdx; j < endIdx; j++) {
-        const abs = Math.abs(data[j] ?? 0)
-        if (abs > amp) amp = abs
-      }
+    for (let j = startIdx; j < endIdx; j++) {
+      const val = smoothedData[j] ?? 0
+      if (val > amp) amp = val
     }
-
-    amplitudes.push(amp)
-  }
-
-  // 平滑处理：5点移动平均，让波形更柔和
-  const smoothed: number[] = []
-  for (let i = 0; i < amplitudes.length; i++) {
-    let sum = 0
-    let count = 0
-    for (let j = -2; j <= 2; j++) {
-      const idx = i + j
-      if (idx >= 0 && idx < amplitudes.length) {
-        sum += amplitudes[idx]
-        count++
-      }
-    }
-    smoothed.push(sum / count)
+    pixelAmplitudes.push(amp)
   }
 
   // 绘制背景渐变
@@ -1307,7 +1334,7 @@ const renderWaveform = (data: number[]) => {
 
   // 从左到右绘制波形顶部
   for (let x = 0; x < width; x++) {
-    const waveHeight = smoothed[x] * maxWaveHeight
+    const waveHeight = pixelAmplitudes[x] * maxWaveHeight
     ctx.lineTo(x, baseY - waveHeight)
   }
 
