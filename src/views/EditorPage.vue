@@ -1071,26 +1071,22 @@ const waveformZoomLevel = computed(() => {
   return waveformViewerRef.value ? Math.round(waveformViewerRef.value.zoomLevel * 100) : 100
 })
 
-// 判断缩放按钮是否禁用
-const canZoomIn = computed(() => {
-  return waveformViewerRef.value ? waveformViewerRef.value.zoomLevel < 1.0 : false
+// 缩放滑块值
+const zoomSliderValue = ref(100)
+
+// 同步滑块值与实际缩放级别
+watch(waveformZoomLevel, (newVal) => {
+  zoomSliderValue.value = newVal
 })
 
-const canZoomOut = computed(() => {
-  return waveformViewerRef.value ? waveformViewerRef.value.zoomLevel > 0.5 : false
-})
-
-// 缩放控制
-const handleZoomIn = () => {
-  if (canZoomIn.value) {
-    waveformViewerRef.value?.zoomIn()
-  }
+// 滑块变化时更新缩放
+const handleZoomSliderChange = (value: number) => {
+  waveformViewerRef.value?.setZoom(value / 100)
 }
 
-const handleZoomOut = () => {
-  if (canZoomOut.value) {
-    waveformViewerRef.value?.zoomOut()
-  }
+// 双击缩放显示区域重置到适合屏幕宽度
+const handleZoomReset = () => {
+  waveformViewerRef.value?.fitToWidth()
 }
 
 // 打开设置
@@ -1504,9 +1500,18 @@ const handleKeydown = (e: KeyboardEvent) => {
 
           <!-- 缩放控制 -->
           <span class="control-label-mini">缩放</span>
-          <el-button size="small" @click="handleZoomOut" class="zoom-btn" :disabled="!canZoomOut">−</el-button>
-          <span class="zoom-display">{{ waveformZoomLevel }}%</span>
-          <el-button size="small" @click="handleZoomIn" class="zoom-btn" :disabled="!canZoomIn">+</el-button>
+          <div class="zoom-slider-container" @dblclick.prevent="handleZoomReset" title="双击重置为适合屏幕宽度">
+            <el-slider
+              v-model="zoomSliderValue"
+              :min="25"
+              :max="200"
+              :step="5"
+              :show-tooltip="false"
+              class="zoom-slider-mini"
+              @input="handleZoomSliderChange"
+            />
+            <span class="zoom-value">{{ waveformZoomLevel }}%</span>
+          </div>
         </div>
 
         <!-- 中间播放控制（居中）-->
@@ -2132,11 +2137,37 @@ const handleKeydown = (e: KeyboardEvent) => {
   padding: 0 0.5rem;
 }
 
-.zoom-display {
+/* 缩放滑块容器 */
+.zoom-slider-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.zoom-slider-mini {
+  width: 100px;
+}
+
+/* 统一滑块样式 - 小圆圈 */
+.zoom-slider-mini :deep(.el-slider__button),
+.volume-slider-mini :deep(.el-slider__button) {
+  width: 12px;
+  height: 12px;
+  border-width: 2px;
+}
+
+.zoom-slider-mini :deep(.el-slider__runway),
+.volume-slider-mini :deep(.el-slider__runway) {
+  height: 4px;
+}
+
+.zoom-value {
   font-size: 0.75rem;
-  color: #666;
-  min-width: 45px;
-  text-align: center;
+  color: #999;
+  min-width: 40px;
+  text-align: right;
+  user-select: none;
 }
 
 /* 时间显示 */

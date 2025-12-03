@@ -171,6 +171,10 @@ const zoomLevel = ref(1) // 缩放级别：1 = 1秒占用 100px
 const pixelsPerSecond = computed(() => 100 * zoomLevel.value)
 const timelineWidth = computed(() => props.duration * pixelsPerSecond.value)
 
+// 缩放节流控制
+const isZooming = ref(false)
+const zoomRAF = ref<number | null>(null)
+
 // 计算字幕轨道的高度（基于轨道数量）
 const subtitleTrackHeight = computed(() => {
   if (!props.subtitles || props.subtitles.length === 0) return 80
@@ -391,9 +395,17 @@ const formatTime = (seconds: number): string => {
 }
 
 // Generate time markers for ruler
+// 时间标记间隔（根据缩放级别分档，减少频繁重算）
+const markerInterval = computed(() => {
+  if (zoomLevel.value >= 1.5) return 1
+  if (zoomLevel.value >= 0.8) return 5
+  if (zoomLevel.value >= 0.4) return 10
+  return 15
+})
+
 const timeMarkers = computed(() => {
   const markers = []
-  const interval = zoomLevel.value >= 2 ? 1 : zoomLevel.value >= 1 ? 5 : 10 // 根据缩放级别调整间隔
+  const interval = markerInterval.value
   for (let i = 0; i <= props.duration; i += interval) {
     markers.push({ time: i })
   }
@@ -434,30 +446,56 @@ const getSubtitleStyle = (subtitle: SubtitleEntry) => {
 }
 
 // Zoom controls - zoom centered on playhead
-// 缩放范围限制：最小 50%（0.5），最大 100%（1.0）
-const MIN_ZOOM = 0.5
-const MAX_ZOOM = 1.0
+// 缩放范围限制：最小 25%（0.25），最大 200%（2.0）
+const MIN_ZOOM = 0.25
+const MAX_ZOOM = 2.0
 
-const zoomIn = () => {
-  zoomLevel.value = Math.min(zoomLevel.value * 1.5, MAX_ZOOM)
-  nextTick(() => {
-    // 以播放指针为中心进行缩放
-    if (trackAreaRef.value) {
+// 内部缩放实现（带节流）
+const applyZoom = (newLevel: number, centerOnPlayhead = true) => {
+  // 取消之前的 RAF
+  if (zoomRAF.value) {
+    cancelAnimationFrame(zoomRAF.value)
+  }
+
+  zoomRAF.value = requestAnimationFrame(() => {
+    zoomLevel.value = Math.max(MIN_ZOOM, Math.min(newLevel, MAX_ZOOM))
+
+    if (centerOnPlayhead && trackAreaRef.value) {
       const newPlayheadPixel = timeToPixel(props.currentTime)
       const containerWidth = trackAreaRef.value.clientWidth
       trackAreaRef.value.scrollLeft = newPlayheadPixel - containerWidth / 2
     }
+
+    zoomRAF.value = null
   })
 }
 
+const zoomIn = () => {
+  applyZoom(zoomLevel.value * 1.5)
+}
+
 const zoomOut = () => {
-  zoomLevel.value = Math.max(zoomLevel.value / 1.5, MIN_ZOOM)
+  applyZoom(zoomLevel.value / 1.5)
+}
+
+// 设置缩放级别
+const setZoom = (level: number) => {
+  applyZoom(level)
+}
+
+// 适应屏幕宽度（双击重置）
+const fitToWidth = () => {
+  if (!trackAreaRef.value || props.duration <= 0) return
+
+  const containerWidth = trackAreaRef.value.clientWidth
+  const fitZoom = containerWidth / (props.duration * 100)
+
+  // 限制在有效范围内
+  zoomLevel.value = Math.max(MIN_ZOOM, Math.min(fitZoom, MAX_ZOOM))
+
   nextTick(() => {
-    // 以播放指针为中心进行缩放
     if (trackAreaRef.value) {
-      const newPlayheadPixel = timeToPixel(props.currentTime)
-      const containerWidth = trackAreaRef.value.clientWidth
-      trackAreaRef.value.scrollLeft = newPlayheadPixel - containerWidth / 2
+      trackAreaRef.value.scrollLeft = 0
     }
   })
 }
@@ -713,7 +751,6 @@ const updateSelectionFromBox = (accumulate: boolean = false) => {
 // Handle wheel zoom (mouse wheel or trackpad)
 const handleWheel = (event: WheelEvent) => {
   // 检查是否是垂直滚动（缩放）或水平滚动（导航）
-  // 如果 deltaY 的绝对值大于 deltaX，认为是垂直滚动（缩放）
   const isVerticalScroll = Math.abs(event.deltaY) > Math.abs(event.deltaX)
 
   // 如果是水平滚动，允许默认行为
@@ -724,39 +761,26 @@ const handleWheel = (event: WheelEvent) => {
   event.preventDefault()
 
   // deltaY > 0 表示向下滚动（缩小），deltaY < 0 表示向上滚动（放大）
-  // 对于触控板，deltaY 可能很大，所以需要归一化
-  const isZoomingIn = event.deltaY < 0
+  const isZoomingInDir = event.deltaY < 0
 
-  // 根据 deltaY 的大小调整缩放因子
-  let zoomFactor = 1.0
+  // 根据 deltaY 的大小调整缩放因子（降低灵敏度）
   const absDelta = Math.abs(event.deltaY)
+  let zoomFactor = 1.0
   if (absDelta > 0) {
-    if (isZoomingIn) {
-      zoomFactor = 1 + (Math.min(absDelta, 100) / 100) * 0.2
+    // 降低缩放灵敏度，从 0.2 改为 0.15
+    const sensitivity = 0.15
+    if (isZoomingInDir) {
+      zoomFactor = 1 + (Math.min(absDelta, 100) / 100) * sensitivity
     } else {
-      zoomFactor = 1 - (Math.min(absDelta, 100) / 100) * 0.2
+      zoomFactor = 1 - (Math.min(absDelta, 100) / 100) * sensitivity
     }
   }
 
-  // 计算新的缩放级别（限制在 MIN_ZOOM 到 MAX_ZOOM 之间）
+  // 计算新的缩放级别
   const newZoomLevel = Math.max(MIN_ZOOM, Math.min(zoomLevel.value * zoomFactor, MAX_ZOOM))
 
-  // 以当前播放位置（红线）为基准进行缩放
-  if (!trackAreaRef.value) return
-
-  // 获取当前播放时间对应的像素位置
-  const playheadPixel = timeToPixel(props.currentTime)
-
-  // 更新缩放级别
-  zoomLevel.value = newZoomLevel
-
-  // 重新计算缩放后播放指针应在的像素位置，使其保持在视图中央
-  nextTick(() => {
-    const newPlayheadPixel = timeToPixel(props.currentTime)
-    const containerWidth = trackAreaRef.value?.clientWidth || 0
-    // 将播放指针保持在视图的中央位置
-    trackAreaRef.value!.scrollLeft = newPlayheadPixel - containerWidth / 2
-  })
+  // 使用 applyZoom 进行节流
+  applyZoom(newZoomLevel)
 }
 
 // Handle subtitle double click - focus the text input
@@ -1213,22 +1237,41 @@ const loadWaveformData = (data: number[]) => {
 
 // Update waveform width when zoom changes
 watch(zoomLevel, () => {
-  if (waveformRef.value) {
-    // 重新设置容器宽度
-    waveformRef.value.style.width = timelineWidth.value + 'px'
-    
-    // 使用防抖：等待用户停止缩放后再重新渲染波形
-    if (waveformRebuildTimer.value) {
-      clearTimeout(waveformRebuildTimer.value)
+  const canvas = waveformCanvasRef.value
+  const waveform = waveformRef.value
+  if (!waveform) return
+
+  // 标记正在缩放
+  isZooming.value = true
+
+  // 重新设置容器宽度
+  waveform.style.width = timelineWidth.value + 'px'
+
+  // 缩放时用 CSS transform 缩放 canvas（GPU 加速，非常流畅）
+  if (canvas) {
+    const currentCanvasWidth = canvas.width / (window.devicePixelRatio || 1)
+    if (currentCanvasWidth > 0) {
+      const scale = timelineWidth.value / currentCanvasWidth
+      canvas.style.transform = `scaleX(${scale})`
+      canvas.style.transformOrigin = 'left top'
     }
-    
-    waveformRebuildTimer.value = setTimeout(() => {
-      // 重新渲染波形
-      if (props.waveformData && props.waveformData.length > 0) {
-        loadWaveformData(props.waveformData)
-      }
-    }, 150) // 150ms 防抖延迟
   }
+
+  // 使用防抖：等待用户停止缩放后再重新渲染波形
+  if (waveformRebuildTimer.value) {
+    clearTimeout(waveformRebuildTimer.value)
+  }
+
+  waveformRebuildTimer.value = setTimeout(() => {
+    isZooming.value = false
+    // 重置 transform，重新渲染波形
+    if (canvas) {
+      canvas.style.transform = ''
+    }
+    if (props.waveformData && props.waveformData.length > 0) {
+      loadWaveformData(props.waveformData)
+    }
+  }, 400) // 400ms 防抖延迟
 })
 
 // Watch for waveform data changes
@@ -1346,6 +1389,8 @@ watch(() => props.scissorMode, (isScissorMode) => {
 defineExpose({
   zoomIn,
   zoomOut,
+  setZoom,
+  fitToWidth,
   zoomLevel
 })
 </script>
