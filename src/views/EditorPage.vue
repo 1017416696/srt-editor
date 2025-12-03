@@ -15,7 +15,7 @@ import type { SRTFile, AudioFile, TimeStamp } from '@/types/subtitle'
 import WaveformViewer from '@/components/WaveformViewer.vue'
 import SettingsDialog from '@/components/SettingsDialog.vue'
 import TitleBar from '@/components/TitleBar.vue'
-import { DocumentCopy, VideoPlay, Delete, PriceTag, Document, Setting, DocumentAdd, Scissor, Search, ArrowDown, Switch } from '@element-plus/icons-vue'
+import { DocumentCopy, VideoPlay, Delete, PriceTag, Document, Setting, DocumentAdd, Scissor, Search, ArrowDown, Switch, Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 // Debounce helper function
@@ -2155,6 +2155,9 @@ const handleKeydown = (e: KeyboardEvent) => {
   border-radius: 8px;
   font-weight: 500;
   font-size: 0.8125rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* 一体化控制栏：三栏布局（左、中、右）*/
