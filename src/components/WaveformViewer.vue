@@ -201,6 +201,7 @@ const subtitleTrackHeight = computed(() => {
 
 // Selection state
 const selectedSubtitleIds = ref<Set<number>>(new Set())
+const lastSelectedSubtitleId = ref<number | null>(null) // 记录上次选中的字幕，用于 Shift 范围选择
 const isSelecting = ref(false)
 const selectionBox = ref<{ startX: number; startY: number; endX: number; endY: number } | null>(null)
 
@@ -821,17 +822,32 @@ const handleSubtitleMouseDown = (event: MouseEvent, subtitle: SubtitleEntry) => 
 
   // 处理多选
   if (event.shiftKey) {
-    // Shift+点击：切换选择状态
-    if (selectedSubtitleIds.value.has(subtitle.id)) {
-      selectedSubtitleIds.value.delete(subtitle.id)
+    // Shift+点击：范围选择（选中两个字幕之间的所有字幕）
+    if (lastSelectedSubtitleId.value !== null && lastSelectedSubtitleId.value !== subtitle.id) {
+      // 找到上次选中和当前点击的字幕在列表中的索引
+      const lastIdx = props.subtitles.findIndex(s => s.id === lastSelectedSubtitleId.value)
+      const currentIdx = props.subtitles.findIndex(s => s.id === subtitle.id)
+      
+      if (lastIdx !== -1 && currentIdx !== -1) {
+        const startIdx = Math.min(lastIdx, currentIdx)
+        const endIdx = Math.max(lastIdx, currentIdx)
+        
+        // 选中范围内的所有字幕
+        for (let i = startIdx; i <= endIdx; i++) {
+          selectedSubtitleIds.value.add(props.subtitles[i].id)
+        }
+      }
     } else {
+      // 没有上次选中的字幕，直接添加当前字幕
       selectedSubtitleIds.value.add(subtitle.id)
+      lastSelectedSubtitleId.value = subtitle.id
     }
     emit('selectSubtitles', Array.from(selectedSubtitleIds.value))
     return
   } else if (event.ctrlKey || event.metaKey) {
     // Ctrl/Cmd+点击：添加到选择
     selectedSubtitleIds.value.add(subtitle.id)
+    lastSelectedSubtitleId.value = subtitle.id
     emit('selectSubtitles', Array.from(selectedSubtitleIds.value))
     return
   }
@@ -852,6 +868,7 @@ const handleSubtitleMouseDown = (event: MouseEvent, subtitle: SubtitleEntry) => 
     // 单个拖拽
     selectedSubtitleIds.value.clear()
     selectedSubtitleIds.value.add(subtitle.id)
+    lastSelectedSubtitleId.value = subtitle.id // 记录最后选中的字幕
     emit('selectSubtitles', [subtitle.id])
     draggingSubtitle.value = subtitle
     dragStartTime.value = timestampToSeconds(subtitle.startTime)
