@@ -10,6 +10,7 @@ import { useAudioStore } from '@/stores/audio'
 import { useConfigStore } from '@/stores/config'
 import { useTabManagerStore } from '@/stores/tabManager'
 import { timeStampToMs } from '@/utils/time'
+import { findVoiceRegion, timestampToMs, msToTimestamp } from '@/utils/waveformAlign'
 import type { SRTFile, AudioFile, TimeStamp } from '@/types/subtitle'
 import WaveformViewer from '@/components/WaveformViewer.vue'
 import SettingsDialog from '@/components/SettingsDialog.vue'
@@ -1054,6 +1055,66 @@ const handleScissor = () => {
   isScissorMode.value = !isScissorMode.value
 }
 
+// 对齐字幕到波形（同时调整开始和结束时间）
+const handleAlignToWaveform = async () => {
+  if (!hasAudio.value) {
+    ElMessage.warning('请先加载音频文件')
+    return
+  }
+
+  if (!currentEntry.value) {
+    ElMessage.warning('请先选择一条字幕')
+    return
+  }
+
+  const waveformData = audioStore.audioFile?.waveform
+  if (!waveformData || waveformData.length === 0) {
+    ElMessage.warning('波形数据未加载')
+    return
+  }
+
+  // 如果正在播放，暂停
+  if (audioStore.playerState.isPlaying) {
+    audioStore.pause()
+  }
+
+  const entry = currentEntry.value
+  const currentStartMs = timestampToMs(entry.startTime)
+  const currentEndMs = timestampToMs(entry.endTime)
+  const duration = audioStore.playerState.duration
+
+  // 查找最近的语音区域
+  const voiceRegion = findVoiceRegion(
+    waveformData,
+    duration,
+    currentStartMs,
+    currentEndMs,
+    2000 // 搜索窗口 ±2秒
+  )
+
+  if (!voiceRegion) {
+    ElMessage.warning('未找到附近的语音区域')
+    return
+  }
+
+  // 更新字幕时间
+  const newStartTime = msToTimestamp(voiceRegion.startMs)
+  const newEndTime = msToTimestamp(voiceRegion.endMs)
+
+  subtitleStore.updateEntryTime(entry.id, newStartTime, newEndTime, true)
+
+  // 更新编辑区显示
+  editingStartTime.value = subtitleStore.formatTimeStamp(newStartTime)
+  editingEndTime.value = subtitleStore.formatTimeStamp(newEndTime)
+
+  // 保存文件
+  if (subtitleStore.currentFilePath) {
+    await subtitleStore.saveToFile()
+  }
+
+  ElMessage.success('已对齐到波形')
+}
+
 // 处理字幕分割
 const handleSplitSubtitle = async (id: number, splitTimeMs: number) => {
   // 如果正在播放，暂停
@@ -1476,6 +1537,16 @@ const handleKeydown = (e: KeyboardEvent) => {
             title="分割字幕 (X)"
           >
             <el-icon><Scissor /></el-icon>
+          </button>
+          <button
+            class="sidebar-btn"
+            @click="handleAlignToWaveform"
+            :disabled="!hasAudio || !currentEntry"
+            title="对齐到波形"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M2 12h4l3-9 4 18 3-9h6"/>
+            </svg>
           </button>
         </div>
         <div class="sidebar-bottom">
@@ -2072,6 +2143,30 @@ const handleKeydown = (e: KeyboardEvent) => {
 
 .sidebar-btn.active .el-icon {
   color: #3b82f6;
+}
+
+.sidebar-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sidebar-btn:disabled:hover {
+  background: transparent;
+}
+
+.sidebar-btn svg {
+  width: 18px;
+  height: 18px;
+  color: #94a3b8;
+  transition: all 0.2s ease;
+}
+
+.sidebar-btn:hover svg {
+  color: #64748b;
+}
+
+.sidebar-btn:disabled svg {
+  color: #94a3b8;
 }
 
 /* 左侧字幕列表 */
