@@ -1533,7 +1533,13 @@ const handleKeydown = (e: KeyboardEvent) => {
             @click="audioStore.togglePlay()"
             class="play-button-mini"
           >
-            {{ audioStore.playerState.isPlaying ? '⏸' : '▶' }}
+            <svg v-if="audioStore.playerState.isPlaying" width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="4" width="4" height="16" rx="1" />
+              <rect x="14" y="4" width="4" height="16" rx="1" />
+            </svg>
+            <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M8 5v14l11-7z" />
+            </svg>
           </el-button>
           <span class="time-display-mini">{{ audioStore.formatTime(audioStore.playerState.duration) }}</span>
         </div>
