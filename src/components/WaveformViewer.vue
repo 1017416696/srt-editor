@@ -308,8 +308,9 @@ const zoomOut = () => {
 const scrollToTime = (time: number) => {
   if (!trackAreaRef.value) return
   const pixel = timeToPixel(time)
+  // 将播放线定位到页面左侧（留 3% 的边距），减少跳转频率
   const containerWidth = trackAreaRef.value.clientWidth
-  trackAreaRef.value.scrollLeft = pixel - containerWidth / 2
+  trackAreaRef.value.scrollLeft = pixel - containerWidth * 0.03
 }
 
 // Handle scroll
