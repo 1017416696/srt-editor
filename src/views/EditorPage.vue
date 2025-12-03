@@ -2364,6 +2364,8 @@ const handleKeydown = (e: KeyboardEvent) => {
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s ease;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .subtitle-item:hover {

@@ -1246,6 +1246,8 @@ defineExpose({
   background: #f8fafc;
   border-top: 1px solid #e2e8f0;
   cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .subtitle-track:active {
@@ -1301,6 +1303,8 @@ defineExpose({
   color: #1e293b;
   white-space: nowrap;
   overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .subtitle-label {
