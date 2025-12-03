@@ -14,11 +14,35 @@ const audioStore = useAudioStore()
 const draggedTabId = ref<string | null>(null)
 const dragOverTabId = ref<string | null>(null)
 
+// 记录点击时间用于检测双击
+let lastClickTime = 0
+
 // 开始拖拽窗口
 const onTitlebarMousedown = async (e: MouseEvent) => {
   if (e.button === 0) {
+    const now = Date.now()
+    const timeDiff = now - lastClickTime
+    lastClickTime = now
+
+    // 检测双击（300ms 内的两次点击）
+    if (timeDiff < 300) {
+      await onTitlebarDoubleClick()
+      return
+    }
+
     e.preventDefault()
     await getCurrentWindow().startDragging()
+  }
+}
+
+// 双击标题栏切换最大化/还原
+const onTitlebarDoubleClick = async () => {
+  const window = getCurrentWindow()
+  const isMaximized = await window.isMaximized()
+  if (isMaximized) {
+    await window.unmaximize()
+  } else {
+    await window.maximize()
   }
 }
 
@@ -89,7 +113,7 @@ const handleDragEnd = () => {
 <template>
   <div class="titlebar">
     <!-- 左侧拖拽区域（红绿灯右边） -->
-    <div class="drag-region drag-region-left" @mousedown.left="onTitlebarMousedown"></div>
+    <div class="drag-region drag-region-left" @mousedown.left="onTitlebarMousedown" @dblclick="onTitlebarDoubleClick"></div>
     
     <!-- 标签页区域 -->
     <div class="tabs-container">
@@ -126,7 +150,7 @@ const handleDragEnd = () => {
     </div>
     
     <!-- 右侧拖拽区域 -->
-    <div class="drag-region drag-region-right" @mousedown.left="onTitlebarMousedown"></div>
+    <div class="drag-region drag-region-right" @mousedown.left="onTitlebarMousedown" @dblclick="onTitlebarDoubleClick"></div>
   </div>
 </template>
 

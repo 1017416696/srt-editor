@@ -219,15 +219,39 @@ const processFiles = async ({
   }
 }
 
+// 记录点击时间用于检测双击
+let lastClickTime = 0
+
 // 标题栏鼠标按下事件 - 开始拖拽窗口
 const onTitlebarMousedown = async (e: MouseEvent) => {
   if (e.button === 0) {
+    const now = Date.now()
+    const timeDiff = now - lastClickTime
+    lastClickTime = now
+
+    // 检测双击（300ms 内的两次点击）
+    if (timeDiff < 300) {
+      await onTitlebarDoubleClick()
+      return
+    }
+
     e.preventDefault()
     try {
       await getCurrentWindow().startDragging()
     } catch (err) {
-      console.error('Failed to start dragging:', err)
+      // 拖拽失败，静默处理
     }
+  }
+}
+
+// 双击标题栏切换最大化/还原
+const onTitlebarDoubleClick = async () => {
+  const window = getCurrentWindow()
+  const isMaximized = await window.isMaximized()
+  if (isMaximized) {
+    await window.unmaximize()
+  } else {
+    await window.maximize()
   }
 }
 
@@ -237,7 +261,7 @@ const onTitlebarMousedown = async (e: MouseEvent) => {
 <template>
   <div class="welcome-page">
     <!-- 标题栏区域（可拖拽） -->
-    <div class="titlebar" @mousedown.left="onTitlebarMousedown">
+    <div class="titlebar" @mousedown.left="onTitlebarMousedown" @dblclick="onTitlebarDoubleClick">
       <span class="titlebar-title">SRT 字幕编辑器</span>
     </div>
 
