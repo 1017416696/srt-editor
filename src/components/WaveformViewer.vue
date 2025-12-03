@@ -450,6 +450,18 @@ const timeMarkers = computed(() => {
   return markers
 })
 
+// 颜色缓存：根据 subtitle.id 缓存 hue 值，避免重复计算
+const subtitleHueCache = new Map<number, number>()
+
+const getSubtitleHue = (id: number): number => {
+  let hue = subtitleHueCache.get(id)
+  if (hue === undefined) {
+    hue = (id * 137.5) % 360
+    subtitleHueCache.set(id, hue)
+  }
+  return hue
+}
+
 // Get subtitle style
 const getSubtitleStyle = (subtitle: SubtitleEntry) => {
   const start = timestampToSeconds(subtitle.startTime)
@@ -457,13 +469,12 @@ const getSubtitleStyle = (subtitle: SubtitleEntry) => {
   const left = timeToPixel(start)
   const width = timeToPixel(end - start)
 
-  // 生成颜色
-  const hue = (subtitle.id * 137.5) % 360
-  const color = `hsl(${hue}, 70%, 65%)`
+  // 使用缓存的 hue 值
+  const hue = getSubtitleHue(subtitle.id)
 
   // 如果被选中，使用更亮的颜色作为基础色
   const isSelected = selectedSubtitleIds.value.has(subtitle.id)
-  const baseColor = isSelected ? `hsl(${hue}, 75%, 70%)` : color
+  const baseColor = isSelected ? `hsl(${hue}, 75%, 70%)` : `hsl(${hue}, 70%, 65%)`
 
   // 根据缩放级别动态调整最小宽度
   // 缩放越小，最小宽度也越小，避免字幕块过长挤占空间
