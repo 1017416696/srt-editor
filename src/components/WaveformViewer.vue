@@ -19,6 +19,8 @@
 
           <!-- 波形图 -->
           <div class="waveform-layer" ref="waveformRef">
+            <!-- Canvas 波形渲染 -->
+            <canvas ref="waveformCanvasRef" class="waveform-canvas"></canvas>
             <!-- 加载动画 - 只在生成波形时显示 -->
             <div v-if="props.isGeneratingWaveform" class="waveform-loading-overlay">
               <div class="waveform-loading-box">
@@ -110,8 +112,6 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { Loading } from '@element-plus/icons-vue'
-import WaveSurfer from 'wavesurfer.js'
 import type { SubtitleEntry, TimeStamp } from '@/types/subtitle'
 
 interface Props {
@@ -151,8 +151,7 @@ const emit = defineEmits<{
 const timelineContainerRef = ref<HTMLDivElement | null>(null)
 const trackAreaRef = ref<HTMLDivElement | null>(null)
 const waveformRef = ref<HTMLDivElement | null>(null)
-const wavesurfer = ref<WaveSurfer | null>(null)
-const loading = ref(false)
+const waveformCanvasRef = ref<HTMLCanvasElement | null>(null)
 const waveformRebuildTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 
 // Timeline state
@@ -779,71 +778,129 @@ const handleResizeEnd = () => {
   document.removeEventListener('mouseup', handleResizeEnd)
 }
 
-// 根据缩放级别计算 barWidth 和 barGap
-const getWaveformParams = () => {
-  // 缩放范围：50% - 100%
-  // 在这个范围内，使用标准参数即可
-  
-  if (zoomLevel.value <= 0.7) {
-    // 50%-70%：标准宽度带小间隙
-    return { barWidth: 2, barGap: 1 }
-  } else {
-    // 70%-100%：标准宽度无间隙，保持连贯
-    return { barWidth: 2, barGap: 0 }
-  }
-}
+// 波形配置
+const WAVEFORM_HEIGHT = 80
 
-// Initialize WaveSurfer
-const initWaveSurfer = () => {
-  if (!waveformRef.value) return
+// 渲染波形到 Canvas - Screen Studio 风格
+const renderWaveform = (data: number[]) => {
+  const canvas = waveformCanvasRef.value
+  if (!canvas || !data || data.length === 0) return
 
-  // 销毁旧实例
-  if (wavesurfer.value) {
-    wavesurfer.value.destroy()
-    wavesurfer.value = null
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  // 如果宽度还是无效，延迟重试
+  if (timelineWidth.value <= 0) {
+    setTimeout(() => renderWaveform(data), 100)
+    return
   }
 
-  const { barWidth, barGap } = getWaveformParams()
+  const width = timelineWidth.value
+  const height = WAVEFORM_HEIGHT
+  const dpr = window.devicePixelRatio || 1
 
-  try {
-    wavesurfer.value = WaveSurfer.create({
-      container: waveformRef.value,
-      waveColor: '#4a9eff',
-      progressColor: '#1e40af',
-      cursorColor: 'transparent',
-      barWidth: barWidth,
-      barGap: barGap,
-      barRadius: Math.min(2, barWidth / 2),
-      height: 80, // 减小波形高度，更紧凑
-      normalize: true,
-      interact: false, // 禁用交互，我们自己处理
-    })
+  canvas.width = width * dpr
+  canvas.height = height * dpr
+  canvas.style.width = width + 'px'
+  canvas.style.height = height + 'px'
+  ctx.scale(dpr, dpr)
 
-    wavesurfer.value.on('ready', () => {
-      console.log('✅ WaveSurfer ready!')
-    })
-  } catch (error) {
-    console.error('❌ Failed to initialize WaveSurfer:', error)
+  // 清空画布
+  ctx.clearRect(0, 0, width, height)
+
+  const isMinMaxFormat = data.length % 2 === 0 && data.length > 2
+  const numPoints = isMinMaxFormat ? data.length / 2 : data.length
+  const pointsPerPixel = numPoints / width
+
+  // 为每个像素计算振幅
+  const amplitudes: number[] = []
+
+  for (let x = 0; x < width; x++) {
+    const startIdx = Math.floor(x * pointsPerPixel)
+    const endIdx = Math.min(Math.ceil((x + 1) * pointsPerPixel), numPoints)
+
+    let amp = 0
+
+    if (isMinMaxFormat) {
+      for (let j = startIdx; j < endIdx; j++) {
+        const min = Math.abs(data[j * 2] ?? 0)
+        const max = Math.abs(data[j * 2 + 1] ?? 0)
+        const localMax = Math.max(min, max)
+        if (localMax > amp) amp = localMax
+      }
+    } else {
+      for (let j = startIdx; j < endIdx; j++) {
+        const abs = Math.abs(data[j] ?? 0)
+        if (abs > amp) amp = abs
+      }
+    }
+
+    amplitudes.push(amp)
   }
+
+  // 平滑处理：5点移动平均，让波形更柔和
+  const smoothed: number[] = []
+  for (let i = 0; i < amplitudes.length; i++) {
+    let sum = 0
+    let count = 0
+    for (let j = -2; j <= 2; j++) {
+      const idx = i + j
+      if (idx >= 0 && idx < amplitudes.length) {
+        sum += amplitudes[idx]
+        count++
+      }
+    }
+    smoothed.push(sum / count)
+  }
+
+  // 绘制背景渐变
+  const bgGradient = ctx.createLinearGradient(0, 0, 0, height)
+  bgGradient.addColorStop(0, 'rgba(59, 130, 246, 0.08)')
+  bgGradient.addColorStop(1, 'rgba(59, 130, 246, 0.15)')
+  ctx.fillStyle = bgGradient
+  ctx.fillRect(0, 0, width, height)
+
+  // 波形从底部向上绘制（Screen Studio 风格）
+  const maxWaveHeight = height - 8 // 留一点顶部边距
+  const baseY = height - 4 // 底部留一点边距
+
+  // 绘制波形填充
+  ctx.beginPath()
+  ctx.moveTo(0, baseY)
+
+  // 从左到右绘制波形顶部
+  for (let x = 0; x < width; x++) {
+    const waveHeight = smoothed[x] * maxWaveHeight
+    ctx.lineTo(x, baseY - waveHeight)
+  }
+
+  // 右下角
+  ctx.lineTo(width - 1, baseY)
+  ctx.closePath()
+
+  // 波形渐变填充
+  const waveGradient = ctx.createLinearGradient(0, 0, 0, height)
+  waveGradient.addColorStop(0, 'rgba(59, 130, 246, 0.9)')
+  waveGradient.addColorStop(0.5, 'rgba(96, 165, 250, 0.7)')
+  waveGradient.addColorStop(1, 'rgba(147, 197, 253, 0.5)')
+  ctx.fillStyle = waveGradient
+  ctx.fill()
 }
 
 // Load waveform data
 const loadWaveformData = (data: number[]) => {
-  if (!wavesurfer.value || !data || data.length === 0) return
+  if (!data || data.length === 0) return
 
-  loading.value = true
-
-  try {
-    const peaks = new Float32Array(data.length)
-    for (let i = 0; i < data.length; i++) {
-      peaks[i] = data[i] || 0
-    }
-    wavesurfer.value.load('', [peaks], props.duration || 1)
-  } catch (error) {
-    console.error('❌ Failed to load waveform data:', error)
-  } finally {
-    loading.value = false
+  // 调试：检查数据范围
+  let minSample = Infinity
+  let maxSample = -Infinity
+  for (let i = 0; i < Math.min(data.length, 1000); i++) {
+    if (data[i] < minSample) minSample = data[i]
+    if (data[i] > maxSample) maxSample = data[i]
   }
+  console.log(`📊 Waveform data: ${data.length} samples, range: [${minSample.toFixed(4)}, ${maxSample.toFixed(4)}]`)
+
+  renderWaveform(data)
 }
 
 // Update waveform width when zoom changes
@@ -852,15 +909,13 @@ watch(zoomLevel, () => {
     // 重新设置容器宽度
     waveformRef.value.style.width = timelineWidth.value + 'px'
     
-    // 使用防抖：等待用户停止缩放后再重建波形，避免频繁重建
+    // 使用防抖：等待用户停止缩放后再重新渲染波形
     if (waveformRebuildTimer.value) {
       clearTimeout(waveformRebuildTimer.value)
     }
     
     waveformRebuildTimer.value = setTimeout(() => {
-      // 重新创建 WaveSurfer 实例以应用新的 barWidth 参数
-      initWaveSurfer()
-      // 重新加载波形数据
+      // 重新渲染波形
       if (props.waveformData && props.waveformData.length > 0) {
         loadWaveformData(props.waveformData)
       }
@@ -869,23 +924,43 @@ watch(zoomLevel, () => {
 })
 
 // Watch for waveform data changes
-watch(() => props.waveformData, (data) => {
-  if (data && data.length > 0 && !props.isGeneratingWaveform) {
-    nextTick(() => {
-      loadWaveformData(data)
-    })
+watch(
+  () => props.waveformData,
+  (data) => {
+    if (data && data.length > 0 && !props.isGeneratingWaveform && props.duration > 0) {
+      nextTick(() => {
+        loadWaveformData(data)
+      })
+    }
+  },
+  { immediate: false }
+)
+
+// Watch for duration changes - re-render waveform when duration becomes available
+watch(
+  () => props.duration,
+  (duration) => {
+    if (duration > 0 && props.waveformData && props.waveformData.length > 0 && !props.isGeneratingWaveform) {
+      nextTick(() => {
+        loadWaveformData(props.waveformData!)
+      })
+    }
   }
-}, { immediate: false })
+)
 
 // Watch for waveform generation status
-watch(() => props.isGeneratingWaveform, (isGenerating) => {
-  // 当波形生成完成时，如果数据存在则加载
-  if (!isGenerating && props.waveformData && props.waveformData.length > 0) {
-    nextTick(() => {
-      loadWaveformData(props.waveformData!)
-    })
-  }
-}, { immediate: true })
+watch(
+  () => props.isGeneratingWaveform,
+  (isGenerating) => {
+    // 当波形生成完成时，如果数据存在且 duration 有效则加载
+    if (!isGenerating && props.waveformData && props.waveformData.length > 0 && props.duration > 0) {
+      nextTick(() => {
+        loadWaveformData(props.waveformData!)
+      })
+    }
+  },
+  { immediate: true }
+)
 
 // Auto-scroll to current time
 watch(() => props.currentTime, (time) => {
@@ -925,8 +1000,6 @@ const handleScissorMouseLeave = () => {
 }
 
 onMounted(() => {
-  initWaveSurfer()
-
   // 只有在波形生成完成且数据存在时才加载
   if (props.waveformData && props.waveformData.length > 0 && !props.isGeneratingWaveform) {
     setTimeout(() => {
@@ -936,9 +1009,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  if (wavesurfer.value) {
-    wavesurfer.value.destroy()
-  }
   if (waveformRebuildTimer.value) {
     clearTimeout(waveformRebuildTimer.value)
   }
@@ -1061,9 +1131,18 @@ defineExpose({
 .waveform-layer {
   width: 100%;
   height: 80px;
-  background: linear-gradient(to bottom, #f8fafc 0%, #f1f5f9 100%);
+  background: transparent;
   position: relative;
   overflow: visible;
+}
+
+/* Canvas 波形 */
+.waveform-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
 }
 
 /* 波形加载动画 - 纯 CSS 实现 */

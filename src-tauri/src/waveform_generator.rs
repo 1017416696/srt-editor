@@ -11,28 +11,53 @@ use symphonia::core::probe::Hint;
 /// Callback type for progress updates (progress: 0.0 to 1.0)
 pub type ProgressCallback = Box<dyn Fn(f32) + Send>;
 
-/// Generate waveform data from an audio file
-/// Returns a vector of normalized amplitude values (0.0 to 1.0)
-/// The number of samples is reduced based on the target_samples parameter
-pub fn generate_waveform(file_path: &str, target_samples: usize) -> Result<Vec<f32>, String> {
-    generate_waveform_with_progress(file_path, target_samples, None)
+/// Waveform data with min/max pairs for professional-grade visualization
+/// Each point contains [min, max] representing the amplitude range in that time slice
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WaveformData {
+    /// Min/Max pairs: [min0, max0, min1, max1, ...] - interleaved for efficient transfer
+    pub peaks: Vec<f32>,
+    /// Number of points (peaks.len() / 2)
+    pub length: usize,
+    /// Sample rate of the original audio
+    pub sample_rate: u32,
+    /// Duration in seconds
+    pub duration: f64,
 }
 
-/// Generate waveform data from an audio file with progress callback
-/// Optimized version: streams audio and downsamples on-the-fly
+/// Generate waveform data from an audio file (legacy API for compatibility)
+/// Returns a vector of normalized amplitude values (0.0 to 1.0)
+#[allow(dead_code)]
+pub fn generate_waveform(file_path: &str, target_samples: usize) -> Result<Vec<f32>, String> {
+    let data = generate_waveform_minmax_with_progress(file_path, target_samples, None)?;
+    // Convert min/max to single values (use max for compatibility)
+    Ok(data.peaks.chunks(2).map(|pair| pair[1]).collect())
+}
+
+/// Generate professional min/max waveform data with progress callback
 pub fn generate_waveform_with_progress(
     file_path: &str,
     target_samples: usize,
     progress_callback: Option<ProgressCallback>,
 ) -> Result<Vec<f32>, String> {
+    let data = generate_waveform_minmax_with_progress(file_path, target_samples, progress_callback)?;
+    // Return interleaved min/max data
+    Ok(data.peaks)
+}
+
+/// Generate min/max waveform data - the core implementation
+pub fn generate_waveform_minmax_with_progress(
+    file_path: &str,
+    target_samples: usize,
+    progress_callback: Option<ProgressCallback>,
+) -> Result<WaveformData, String> {
     let path = Path::new(file_path);
 
     // Open the media source
-    let file = File::open(path)
-        .map_err(|e| format!("Failed to open audio file: {}", e))?;
-    
-    let file_size = file.metadata().map(|m| m.len()).unwrap_or(0);
+    let file =
+        File::open(path).map_err(|e| format!("Failed to open audio file: {}", e))?;
 
+    let file_size = file.metadata().map(|m| m.len()).unwrap_or(0);
     let mss = MediaSourceStream::new(Box::new(file), Default::default());
 
     // Create a hint to help the format registry guess the format
@@ -61,7 +86,7 @@ pub fn generate_waveform_with_progress(
         .ok_or_else(|| "No audio track found".to_string())?;
 
     let track_id = track.id;
-    
+
     // Get total frames for progress calculation (if available)
     let total_frames = track.codec_params.n_frames;
     let sample_rate = track.codec_params.sample_rate.unwrap_or(44100);
@@ -77,7 +102,7 @@ pub fn generate_waveform_with_progress(
         frames as usize
     } else {
         // Rough estimate: assume ~10 bytes per sample for compressed audio
-        (file_size as usize / 10).max(sample_rate as usize * 60) // at least 1 minute
+        (file_size as usize / 10).max(sample_rate as usize * 60)
     };
 
     // Pre-allocate with estimated capacity to reduce reallocations
@@ -101,14 +126,12 @@ pub fn generate_waveform_with_progress(
         // Decode the packet
         match decoder.decode(&packet) {
             Ok(decoded) => {
-                // Extract samples from the decoded audio buffer
                 let samples = extract_samples(&decoded);
                 let num_samples = samples.len();
                 all_samples.extend(samples);
                 decoded_frames += num_samples as u64;
-                
-                // Update progress based on time (throttle to max 10 updates per second)
-                // This avoids blocking the main processing
+
+                // Update progress (throttle to max 10 updates per second)
                 if let Some(ref callback) = progress_callback {
                     let now = Instant::now();
                     if now.duration_since(last_progress_time).as_millis() >= 100 {
@@ -117,7 +140,7 @@ pub fn generate_waveform_with_progress(
                         } else {
                             (decoded_frames as f32 / estimated_total_samples as f32 * 0.9).min(0.9)
                         };
-                        
+
                         if progress > last_reported_progress + 0.01 {
                             callback(progress);
                             last_reported_progress = progress;
@@ -142,80 +165,176 @@ pub fn generate_waveform_with_progress(
         callback(0.9);
     }
 
-    // Downsample to target number of samples (fast, no progress callback needed)
-    let waveform = downsample_and_normalize_fast(&all_samples, target_samples);
+    // Calculate duration
+    let duration = all_samples.len() as f64 / sample_rate as f64;
+
+    // Generate min/max peaks
+    let peaks = generate_minmax_peaks(&all_samples, target_samples);
 
     // Report progress: 100% - complete
     if let Some(ref callback) = progress_callback {
         callback(1.0);
     }
 
-    Ok(waveform)
+    Ok(WaveformData {
+        peaks,
+        length: target_samples,
+        sample_rate,
+        duration,
+    })
 }
 
 /// Extract samples from an audio buffer and convert to mono f32
-/// Optimized: only extract first channel for speed (stereo files have similar waveforms)
+/// For stereo, mix both channels for more accurate representation
 #[inline]
 fn extract_samples(decoded: &AudioBufferRef) -> Vec<f32> {
     match decoded {
         AudioBufferRef::F32(buf) => {
-            // Just use first channel for speed
-            buf.chan(0).to_vec()
+            let channels = buf.spec().channels.count();
+            if channels >= 2 {
+                // Mix stereo to mono
+                let left = buf.chan(0);
+                let right = buf.chan(1);
+                left.iter()
+                    .zip(right.iter())
+                    .map(|(&l, &r)| (l + r) * 0.5)
+                    .collect()
+            } else {
+                buf.chan(0).to_vec()
+            }
         }
         AudioBufferRef::S32(buf) => {
-            let channel = buf.chan(0);
             let scale = 1.0 / i32::MAX as f32;
-            channel.iter().map(|&s| s as f32 * scale).collect()
+            let channels = buf.spec().channels.count();
+            if channels >= 2 {
+                let left = buf.chan(0);
+                let right = buf.chan(1);
+                left.iter()
+                    .zip(right.iter())
+                    .map(|(&l, &r)| ((l as f32 + r as f32) * 0.5) * scale)
+                    .collect()
+            } else {
+                buf.chan(0).iter().map(|&s| s as f32 * scale).collect()
+            }
         }
         AudioBufferRef::S16(buf) => {
-            let channel = buf.chan(0);
             let scale = 1.0 / i16::MAX as f32;
-            channel.iter().map(|&s| s as f32 * scale).collect()
+            let channels = buf.spec().channels.count();
+            if channels >= 2 {
+                let left = buf.chan(0);
+                let right = buf.chan(1);
+                left.iter()
+                    .zip(right.iter())
+                    .map(|(&l, &r)| ((l as f32 + r as f32) * 0.5) * scale)
+                    .collect()
+            } else {
+                buf.chan(0).iter().map(|&s| s as f32 * scale).collect()
+            }
         }
         AudioBufferRef::U8(buf) => {
-            let channel = buf.chan(0);
-            channel.iter().map(|&s| (s as f32 - 128.0) / 128.0).collect()
+            let channels = buf.spec().channels.count();
+            if channels >= 2 {
+                let left = buf.chan(0);
+                let right = buf.chan(1);
+                left.iter()
+                    .zip(right.iter())
+                    .map(|(&l, &r)| ((l as f32 - 128.0) + (r as f32 - 128.0)) / 256.0)
+                    .collect()
+            } else {
+                buf.chan(0)
+                    .iter()
+                    .map(|&s| (s as f32 - 128.0) / 128.0)
+                    .collect()
+            }
         }
         _ => Vec::new(),
     }
 }
 
-/// Fast downsample without progress callback (optimized for speed)
-fn downsample_and_normalize_fast(samples: &[f32], target_samples: usize) -> Vec<f32> {
+/// Generate min/max peaks for professional waveform display
+/// Returns interleaved [min0, max0, min1, max1, ...] array
+/// The output is normalized to use the full [-1, 1] range for better visualization
+fn generate_minmax_peaks(samples: &[f32], target_samples: usize) -> Vec<f32> {
     if samples.is_empty() {
         return Vec::new();
     }
 
     let total_samples = samples.len();
 
+    // If we have fewer samples than target, each sample becomes its own min/max
     if total_samples <= target_samples {
-        // If we have fewer samples than target, just normalize
-        return samples.iter().map(|&s| s.abs()).collect();
+        let peaks: Vec<f32> = samples.iter().flat_map(|&s| [s, s]).collect();
+        return normalize_peaks(peaks);
     }
 
-    let chunk_size = total_samples / target_samples;
-    let mut waveform = Vec::with_capacity(target_samples);
+    let chunk_size = total_samples as f64 / target_samples as f64;
+    let mut peaks = Vec::with_capacity(target_samples * 2);
 
-    // For each chunk, find the peak amplitude
-    // Use iterator-based approach for better performance
     for i in 0..target_samples {
-        let start = i * chunk_size;
-        let end = if i == target_samples - 1 {
-            total_samples
-        } else {
-            (i + 1) * chunk_size
-        };
+        let start = (i as f64 * chunk_size) as usize;
+        let end = ((i + 1) as f64 * chunk_size) as usize;
+        let end = end.min(total_samples);
+
+        if start >= end {
+            peaks.push(0.0);
+            peaks.push(0.0);
+            continue;
+        }
 
         let chunk = &samples[start..end];
-        // Use SIMD-friendly iteration pattern
-        let peak = chunk.iter().fold(0.0f32, |max, &s| {
-            let abs = s.abs();
-            if abs > max { abs } else { max }
-        });
-        waveform.push(peak);
+
+        // Find true min and max (preserving sign for proper waveform shape)
+        let mut min_val = f32::MAX;
+        let mut max_val = f32::MIN;
+
+        for &sample in chunk {
+            if sample < min_val {
+                min_val = sample;
+            }
+            if sample > max_val {
+                max_val = sample;
+            }
+        }
+
+        // Clamp to valid range
+        min_val = min_val.clamp(-1.0, 1.0);
+        max_val = max_val.clamp(-1.0, 1.0);
+
+        peaks.push(min_val);
+        peaks.push(max_val);
     }
 
-    waveform
+    // Normalize to use full range for better visualization
+    normalize_peaks(peaks)
+}
+
+/// Normalize peaks to use the full [-1, 1] range
+fn normalize_peaks(mut peaks: Vec<f32>) -> Vec<f32> {
+    if peaks.is_empty() {
+        return peaks;
+    }
+
+    // Find the maximum absolute value
+    let mut max_abs: f32 = 0.0;
+    for &val in &peaks {
+        let abs = val.abs();
+        if abs > max_abs {
+            max_abs = abs;
+        }
+    }
+
+    // If max is too small, don't normalize (avoid division by near-zero)
+    if max_abs < 0.001 {
+        return peaks;
+    }
+
+    // Normalize all values
+    let scale = 1.0 / max_abs;
+    for val in &mut peaks {
+        *val *= scale;
+    }
+
+    peaks
 }
 
 #[cfg(test)]
@@ -223,9 +342,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_downsample() {
-        let samples = vec![0.5, 0.8, 0.3, 0.9, 0.1, 0.7];
-        let result = downsample_and_normalize_fast(&samples, 3);
-        assert_eq!(result.len(), 3);
+    fn test_minmax_peaks() {
+        let samples = vec![0.5, -0.3, 0.8, -0.9, 0.1, -0.7];
+        let result = generate_minmax_peaks(&samples, 3);
+        // Should have 6 values (3 min/max pairs)
+        assert_eq!(result.len(), 6);
+        // First pair from [0.5, -0.3]: min=-0.3, max=0.5
+        assert_eq!(result[0], -0.3);
+        assert_eq!(result[1], 0.5);
+    }
+
+    #[test]
+    fn test_minmax_peaks_single_chunk() {
+        let samples = vec![0.2, -0.5, 0.8, -0.1];
+        let result = generate_minmax_peaks(&samples, 1);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], -0.5); // min
+        assert_eq!(result[1], 0.8); // max
     }
 }
