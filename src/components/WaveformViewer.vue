@@ -23,14 +23,22 @@
         <div class="timeline-content" :style="{ width: timelineWidth + 'px' }" @click="handleTimelineClick">
           <!-- 时间刻度尺 -->
           <div class="time-ruler" :style="{ width: timelineWidth + 'px' }">
+            <!-- 主刻度（带时间标签） -->
             <div
               v-for="marker in timeMarkers"
-              :key="marker.time"
-              class="time-marker"
+              :key="'main-' + marker.time"
+              class="time-marker main"
               :style="{ left: timeToPixel(marker.time) + 'px' }"
             >
-              <span class="time-label">{{ formatTime(marker.time) }}</span>
+              <span class="time-label">{{ formatTimeLabel(marker.time) }}</span>
             </div>
+            <!-- 次级刻度（只有短竖线，无标签） -->
+            <div
+              v-for="marker in subMarkers"
+              :key="'sub-' + marker.time"
+              class="time-marker sub"
+              :style="{ left: timeToPixel(marker.time) + 'px' }"
+            />
           </div>
 
           <!-- 波形图 -->
@@ -433,12 +441,18 @@ const formatTime = (seconds: number): string => {
 }
 
 // Generate time markers for ruler
-// 时间标记间隔（根据缩放级别分档，减少频繁重算）
+// 主刻度间隔（带时间标签）
 const markerInterval = computed(() => {
-  if (zoomLevel.value >= 1.5) return 1
-  if (zoomLevel.value >= 0.8) return 5
-  if (zoomLevel.value >= 0.4) return 10
-  return 15
+  if (zoomLevel.value >= 1.5) return 1      // 很大：每1秒
+  if (zoomLevel.value >= 0.5) return 5      // 正常：每5秒
+  return 10                                  // 缩小：每10秒
+})
+
+// 次级刻度间隔（只有短竖线，无标签）
+const subMarkerInterval = computed(() => {
+  // 当主刻度是1秒时，不需要次级刻度
+  if (markerInterval.value === 1) return 0
+  return 1  // 其他情况：每1秒一个次级刻度
 })
 
 const timeMarkers = computed(() => {
@@ -449,6 +463,40 @@ const timeMarkers = computed(() => {
   }
   return markers
 })
+
+// 次级刻度（主刻度之间的小竖线，无标签）
+const subMarkers = computed(() => {
+  const markers: { time: number }[] = []
+  const mainInterval = markerInterval.value
+  const subInterval = subMarkerInterval.value
+  
+  // 不需要次级刻度时返回空
+  if (subInterval === 0) return markers
+  
+  for (let i = 0; i <= props.duration; i += subInterval) {
+    // 跳过主刻度位置
+    if (i % mainInterval !== 0) {
+      markers.push({ time: i })
+    }
+  }
+  return markers
+})
+
+// 智能时间格式（根据音频长度自适应）
+const formatTimeLabel = (seconds: number): string => {
+  if (props.duration < 60) {
+    // 短音频（<1分钟）：直接显示秒数
+    return seconds % 1 === 0 ? `${seconds}s` : `${seconds.toFixed(1)}s`
+  }
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  if (props.duration < 600) {
+    // 中等长度（<10分钟）：简化格式 m:ss
+    return `${mins}:${String(secs).padStart(2, '0')}`
+  }
+  // 长音频：完整格式 mm:ss
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+}
 
 // 颜色缓存：根据 subtitle.id 缓存 hue 值，避免重复计算
 const subtitleHueCache = new Map<number, number>()
@@ -1746,6 +1794,20 @@ defineExpose({
   height: 100%;
   border-left: 1px solid #cbd5e1;
   padding-left: 4px;
+}
+
+/* 主刻度 - 更明显的样式 */
+.time-marker.main {
+  border-left: 1px solid #94a3b8;
+}
+
+/* 次级刻度 - 只有短竖线 */
+.time-marker.sub {
+  border-left: 1px solid #d1d5db;
+  height: 10px;
+  top: auto;
+  bottom: 0;
+  padding-left: 0;
 }
 
 .time-label {
