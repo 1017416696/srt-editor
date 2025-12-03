@@ -6,7 +6,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, Headset } from '@element-plus/icons-vue'
+import { Document, Headset, Clock } from '@element-plus/icons-vue'
 import { useSubtitleStore } from '@/stores/subtitle'
 import { useAudioStore } from '@/stores/audio'
 import { useConfigStore } from '@/stores/config'
@@ -219,6 +219,58 @@ const processFiles = async ({
   }
 }
 
+// 格式化相对时间
+const formatRelativeTime = (timestamp: number): string => {
+  const now = Date.now()
+  const diff = now - timestamp
+  const minutes = Math.floor(diff / 60000)
+  const hours = Math.floor(diff / 3600000)
+  const days = Math.floor(diff / 86400000)
+
+  if (minutes < 1) return '刚刚'
+  if (minutes < 60) return `${minutes} 分钟前`
+  if (hours < 24) return `${hours} 小时前`
+  if (days < 7) return `${days} 天前`
+  
+  const date = new Date(timestamp)
+  return `${date.getMonth() + 1}/${date.getDate()}`
+}
+
+// 打开最近文件
+const openRecentFile = async (filePath: string) => {
+  isLoading.value = true
+  loadingMessage.value = '正在加载字幕文件...'
+  
+  try {
+    const srtFile = await invoke<SRTFile>('read_srt', { filePath })
+    await subtitleStore.loadSRTFile(srtFile)
+    
+    // 更新最近文件列表（移到最前）
+    configStore.addRecentFile(filePath)
+    
+    // 更新菜单
+    if ((window as any).__updateRecentFilesMenu) {
+      await (window as any).__updateRecentFilesMenu()
+    }
+    
+    loadingMessage.value = '即将进入编辑器...'
+    setTimeout(() => {
+      router.push('/editor')
+    }, 300)
+  } catch (error) {
+    isLoading.value = false
+    loadingMessage.value = ''
+    await ElMessageBox.alert(
+      `加载文件失败：${error instanceof Error ? error.message : '文件可能已被移动或删除'}`,
+      '加载失败',
+      {
+        confirmButtonText: '确定',
+        type: 'error',
+      }
+    )
+  }
+}
+
 // 记录点击时间用于检测双击
 let lastClickTime = 0
 
@@ -322,6 +374,27 @@ const onTitlebarDoubleClick = async () => {
         <p class="tip-text">
           提示：可单独加载 SRT 文件编辑，或同时加载音频以同步调整时间轴
         </p>
+
+        <!-- 最近打开的文件 -->
+        <div v-if="configStore.recentFiles.length > 0" class="recent-files">
+          <div class="recent-header">
+            <el-icon><Clock /></el-icon>
+            <span>最近打开</span>
+          </div>
+          <div class="recent-list">
+            <div
+              v-for="file in configStore.recentFiles.slice(0, 5)"
+              :key="file.path"
+              class="recent-item"
+              :title="file.path"
+              @click="openRecentFile(file.path)"
+            >
+              <el-icon class="file-icon"><Document /></el-icon>
+              <span class="file-name">{{ file.name }}</span>
+              <span class="file-time">{{ formatRelativeTime(file.lastOpened) }}</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- 底部快捷键提示 -->
@@ -633,5 +706,69 @@ const onTitlebarDoubleClick = async () => {
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
   color: #555;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* 最近打开的文件 */
+.recent-files {
+  width: 100%;
+  margin-top: -0.5rem;
+}
+
+.recent-header {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b7280;
+  margin-bottom: 0.5rem;
+}
+
+.recent-header .el-icon {
+  font-size: 14px;
+}
+
+.recent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.recent-item:hover {
+  background: #f0f7ff;
+  border-color: #3b82f6;
+}
+
+.recent-item .file-icon {
+  font-size: 16px;
+  color: #3b82f6;
+  flex-shrink: 0;
+}
+
+.recent-item .file-name {
+  flex: 1;
+  font-size: 13px;
+  color: #374151;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-item .file-time {
+  font-size: 12px;
+  color: #9ca3af;
+  flex-shrink: 0;
 }
 </style>
