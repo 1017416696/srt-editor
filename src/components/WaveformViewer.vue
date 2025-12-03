@@ -214,6 +214,10 @@ const dragStartTime = ref(0)
 const dragStartTimes = ref<Map<number, number>>(new Map()) // 批量拖拽时每个字幕的起始时间
 const currentSubtitleId = ref<number | null>(null)
 
+// 拖拽节流控制
+const dragRAF = ref<number | null>(null)
+const pendingDragEvent = ref<MouseEvent | null>(null)
+
 // 剪刀模式参考线位置
 const scissorLineX = ref<number | null>(null)
 
@@ -884,7 +888,8 @@ const handleSubtitleMouseDown = (event: MouseEvent, subtitle: SubtitleEntry) => 
   event.preventDefault()
 }
 
-const handleSubtitleDrag = (event: MouseEvent) => {
+// 实际执行拖拽更新的函数
+const executeDragUpdate = (event: MouseEvent) => {
   const deltaX = event.clientX - dragStartX.value
   const deltaTime = pixelToTime(deltaX)
   
@@ -1027,7 +1032,31 @@ const handleSubtitleDrag = (event: MouseEvent) => {
   }
 }
 
+// 使用 requestAnimationFrame 节流的拖拽处理函数
+const handleSubtitleDrag = (event: MouseEvent) => {
+  // 保存最新的事件
+  pendingDragEvent.value = event
+  
+  // 如果已经有 RAF 在等待，跳过
+  if (dragRAF.value !== null) return
+  
+  // 请求下一帧执行更新
+  dragRAF.value = requestAnimationFrame(() => {
+    if (pendingDragEvent.value) {
+      executeDragUpdate(pendingDragEvent.value)
+      pendingDragEvent.value = null
+    }
+    dragRAF.value = null
+  })
+}
+
 const handleSubtitleDragEnd = () => {
+  // 取消待执行的 RAF
+  if (dragRAF.value !== null) {
+    cancelAnimationFrame(dragRAF.value)
+    dragRAF.value = null
+  }
+  pendingDragEvent.value = null
   // 通知拖动结束，记录历史
   emit('dragEnd')
   
@@ -1043,6 +1072,10 @@ const handleSubtitleDragEnd = () => {
 }
 
 // Subtitle resizing
+// resize 节流控制
+const resizeRAF = ref<number | null>(null)
+const pendingResizeEvent = ref<MouseEvent | null>(null)
+
 const handleResizeStart = (event: MouseEvent, subtitle: SubtitleEntry, side: 'left' | 'right') => {
   resizingSubtitle.value = { subtitle, side }
   dragStartX.value = event.clientX
@@ -1055,7 +1088,8 @@ const handleResizeStart = (event: MouseEvent, subtitle: SubtitleEntry, side: 'le
   event.preventDefault()
 }
 
-const handleResize = (event: MouseEvent) => {
+// 实际执行 resize 更新的函数
+const executeResizeUpdate = (event: MouseEvent) => {
   if (!resizingSubtitle.value) return
 
   const { subtitle, side } = resizingSubtitle.value
@@ -1119,7 +1153,32 @@ const handleResize = (event: MouseEvent) => {
   dragStartX.value = event.clientX
 }
 
+// 使用 requestAnimationFrame 节流的 resize 处理函数
+const handleResize = (event: MouseEvent) => {
+  // 保存最新的事件
+  pendingResizeEvent.value = event
+  
+  // 如果已经有 RAF 在等待，跳过
+  if (resizeRAF.value !== null) return
+  
+  // 请求下一帧执行更新
+  resizeRAF.value = requestAnimationFrame(() => {
+    if (pendingResizeEvent.value) {
+      executeResizeUpdate(pendingResizeEvent.value)
+      pendingResizeEvent.value = null
+    }
+    resizeRAF.value = null
+  })
+}
+
 const handleResizeEnd = () => {
+  // 取消待执行的 RAF
+  if (resizeRAF.value !== null) {
+    cancelAnimationFrame(resizeRAF.value)
+    resizeRAF.value = null
+  }
+  pendingResizeEvent.value = null
+  
   // 通知拖动结束，记录历史
   emit('dragEnd')
   
@@ -1384,6 +1443,19 @@ onMounted(() => {
 onUnmounted(() => {
   if (waveformRebuildTimer.value) {
     clearTimeout(waveformRebuildTimer.value)
+  }
+  // 清理拖拽相关的 RAF
+  if (dragRAF.value !== null) {
+    cancelAnimationFrame(dragRAF.value)
+    dragRAF.value = null
+  }
+  if (resizeRAF.value !== null) {
+    cancelAnimationFrame(resizeRAF.value)
+    resizeRAF.value = null
+  }
+  if (zoomRAF.value !== null) {
+    cancelAnimationFrame(zoomRAF.value)
+    zoomRAF.value = null
   }
   document.removeEventListener('mousemove', handleSubtitleDrag)
   document.removeEventListener('mouseup', handleSubtitleDragEnd)
