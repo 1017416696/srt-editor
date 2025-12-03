@@ -222,6 +222,11 @@ const pendingDragEvent = ref<MouseEvent | null>(null)
 const scrollLeft = ref(0)
 const viewportWidth = ref(800) // 默认值，会在 mounted 时更新
 
+// 用户手动滚动后的自动跟随禁用控制
+const isUserScrolling = ref(false)
+const userScrollTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const USER_SCROLL_COOLDOWN = 2000 // 用户滚动后 2 秒内禁用自动跟随
+
 // 可见字幕过滤（虚拟渲染优化）
 const visibleSubtitles = computed(() => {
   if (!props.subtitles || props.subtitles.length === 0) return []
@@ -545,6 +550,23 @@ const scrollToTime = (time: number) => {
 const handleScroll = () => {
   if (trackAreaRef.value) {
     scrollLeft.value = trackAreaRef.value.scrollLeft
+    
+    // 标记用户正在手动滚动，暂时禁用自动跟随
+    isUserScrolling.value = true
+    
+    // 清除之前的定时器
+    if (userScrollTimer.value) {
+      clearTimeout(userScrollTimer.value)
+    }
+    
+    // 设置冷却时间，2秒后恢复自动跟随
+    userScrollTimer.value = setTimeout(() => {
+      isUserScrolling.value = false
+      userScrollTimer.value = null
+    }, USER_SCROLL_COOLDOWN)
+    
+    // 滚动时更新波形分段渲染
+    updateWaveformOnScroll()
   }
 }
 
@@ -1217,11 +1239,15 @@ const handleResizeEnd = () => {
 
 // 波形配置
 const WAVEFORM_HEIGHT = 80
+const WAVEFORM_BUFFER_PX = 500 // 左右缓冲区像素
 
 // 缓存预处理后的波形数据（5点移动平均平滑处理）
-// 只在原始波形数据变化时重新计算，避免每次渲染都重复计算
 const smoothedWaveformCache = ref<number[]>([])
 const waveformDataCacheKey = ref<string>('')
+
+// 分段渲染状态
+const lastRenderedRange = ref<{ start: number; end: number } | null>(null)
+const waveformScrollRAF = ref<number | null>(null)
 
 // 预处理波形数据：提取振幅并应用5点移动平均平滑
 const preprocessWaveformData = (data: number[]): number[] => {
@@ -1262,50 +1288,120 @@ const preprocessWaveformData = (data: number[]): number[] => {
   return smoothed
 }
 
-// 渲染波形到 Canvas - Screen Studio 风格
-const renderWaveform = (data: number[]) => {
+// 计算当前需要渲染的范围
+const getVisibleWaveformRange = () => {
+  const bufferPx = WAVEFORM_BUFFER_PX
+  const start = Math.max(0, scrollLeft.value - bufferPx)
+  const end = Math.min(timelineWidth.value, scrollLeft.value + viewportWidth.value + bufferPx)
+  return { start: Math.floor(start), end: Math.ceil(end) }
+}
+
+// 检查是否需要重新渲染（滚动超出缓冲区）
+const needsRerender = (newRange: { start: number; end: number }) => {
+  if (!lastRenderedRange.value) return true
+  const { start: lastStart, end: lastEnd } = lastRenderedRange.value
+  // 如果新范围超出了上次渲染范围的 50%，需要重新渲染
+  const threshold = WAVEFORM_BUFFER_PX * 0.5
+  return newRange.start < lastStart + threshold || newRange.end > lastEnd - threshold
+}
+
+// 分段渲染波形 - 只渲染可见区域
+const renderWaveformSegment = (data: number[], forceFullRender = false) => {
   const canvas = waveformCanvasRef.value
   if (!canvas || !data || data.length === 0) return
 
   const ctx = canvas.getContext('2d')
   if (!ctx) return
 
-  // 如果宽度还是无效，延迟重试
   if (timelineWidth.value <= 0) {
-    setTimeout(() => renderWaveform(data), 100)
+    setTimeout(() => renderWaveformSegment(data, forceFullRender), 100)
     return
   }
 
-  // 检查缓存是否有效，无效则重新预处理
+  // 检查缓存是否有效
   const cacheKey = `${data.length}-${data[0]}-${data[data.length - 1]}`
   if (waveformDataCacheKey.value !== cacheKey) {
     smoothedWaveformCache.value = preprocessWaveformData(data)
     waveformDataCacheKey.value = cacheKey
-    console.log('📊 Waveform smoothing cache updated')
+    forceFullRender = true
   }
 
   const smoothedData = smoothedWaveformCache.value
   if (smoothedData.length === 0) return
 
-  const width = timelineWidth.value
+  const totalWidth = timelineWidth.value
   const height = WAVEFORM_HEIGHT
   const dpr = window.devicePixelRatio || 1
 
-  canvas.width = width * dpr
+  // 计算可见范围
+  const visibleRange = getVisibleWaveformRange()
+  
+  // 短音频（< 3000px）直接全量渲染，避免分段开销
+  if (totalWidth < 3000 || forceFullRender) {
+    // 全量渲染
+    canvas.width = totalWidth * dpr
+    canvas.height = height * dpr
+    canvas.style.width = totalWidth + 'px'
+    canvas.style.height = height + 'px'
+    canvas.style.left = '0px'
+    ctx.scale(dpr, dpr)
+    
+    renderWaveformToContext(ctx, smoothedData, 0, totalWidth, totalWidth, height)
+    lastRenderedRange.value = { start: 0, end: totalWidth }
+    return
+  }
+
+  // 检查是否需要重新渲染
+  if (!needsRerender(visibleRange) && !forceFullRender) {
+    return
+  }
+
+  // 分段渲染：只渲染可见区域 + 缓冲区
+  const renderStart = visibleRange.start
+  const renderEnd = visibleRange.end
+  const renderWidth = renderEnd - renderStart
+
+  canvas.width = renderWidth * dpr
   canvas.height = height * dpr
-  canvas.style.width = width + 'px'
+  canvas.style.width = renderWidth + 'px'
   canvas.style.height = height + 'px'
+  canvas.style.left = renderStart + 'px'
   ctx.scale(dpr, dpr)
 
-  // 清空画布
-  ctx.clearRect(0, 0, width, height)
+  renderWaveformToContext(ctx, smoothedData, renderStart, renderEnd, totalWidth, height)
+  lastRenderedRange.value = { start: renderStart, end: renderEnd }
+}
 
+// 核心渲染函数：将波形绘制到指定 context
+const renderWaveformToContext = (
+  ctx: CanvasRenderingContext2D,
+  smoothedData: number[],
+  startPx: number,
+  endPx: number,
+  totalWidth: number,
+  height: number
+) => {
+  const renderWidth = endPx - startPx
   const numPoints = smoothedData.length
-  const pointsPerPixel = numPoints / width
+  const pointsPerPixel = numPoints / totalWidth
 
-  // 为每个像素从缓存的平滑数据中采样（快速操作）
+  // 清空画布
+  ctx.clearRect(0, 0, renderWidth, height)
+
+  // 绘制背景渐变
+  const bgGradient = ctx.createLinearGradient(0, 0, 0, height)
+  bgGradient.addColorStop(0, 'rgba(59, 130, 246, 0.08)')
+  bgGradient.addColorStop(1, 'rgba(59, 130, 246, 0.15)')
+  ctx.fillStyle = bgGradient
+  ctx.fillRect(0, 0, renderWidth, height)
+
+  // 波形参数
+  const maxWaveHeight = height - 8
+  const baseY = height - 4
+
+  // 为渲染范围内的每个像素采样
   const pixelAmplitudes: number[] = []
-  for (let x = 0; x < width; x++) {
+  for (let x = startPx; x < endPx; x++) {
     const startIdx = Math.floor(x * pointsPerPixel)
     const endIdx = Math.min(Math.ceil((x + 1) * pointsPerPixel), numPoints)
 
@@ -1317,29 +1413,16 @@ const renderWaveform = (data: number[]) => {
     pixelAmplitudes.push(amp)
   }
 
-  // 绘制背景渐变
-  const bgGradient = ctx.createLinearGradient(0, 0, 0, height)
-  bgGradient.addColorStop(0, 'rgba(59, 130, 246, 0.08)')
-  bgGradient.addColorStop(1, 'rgba(59, 130, 246, 0.15)')
-  ctx.fillStyle = bgGradient
-  ctx.fillRect(0, 0, width, height)
-
-  // 波形从底部向上绘制（Screen Studio 风格）
-  const maxWaveHeight = height - 8 // 留一点顶部边距
-  const baseY = height - 4 // 底部留一点边距
-
   // 绘制波形填充
   ctx.beginPath()
   ctx.moveTo(0, baseY)
 
-  // 从左到右绘制波形顶部
-  for (let x = 0; x < width; x++) {
-    const waveHeight = pixelAmplitudes[x] * maxWaveHeight
-    ctx.lineTo(x, baseY - waveHeight)
+  for (let i = 0; i < pixelAmplitudes.length; i++) {
+    const waveHeight = pixelAmplitudes[i] * maxWaveHeight
+    ctx.lineTo(i, baseY - waveHeight)
   }
 
-  // 右下角
-  ctx.lineTo(width - 1, baseY)
+  ctx.lineTo(renderWidth - 1, baseY)
   ctx.closePath()
 
   // 波形渐变填充
@@ -1351,19 +1434,29 @@ const renderWaveform = (data: number[]) => {
   ctx.fill()
 }
 
+// 滚动时更新波形渲染（节流）
+const updateWaveformOnScroll = () => {
+  if (!props.waveformData || props.waveformData.length === 0) return
+  
+  // 取消之前的 RAF
+  if (waveformScrollRAF.value !== null) {
+    cancelAnimationFrame(waveformScrollRAF.value)
+  }
+  
+  waveformScrollRAF.value = requestAnimationFrame(() => {
+    renderWaveformSegment(props.waveformData!)
+    waveformScrollRAF.value = null
+  })
+}
+
+// 兼容旧 API
+const renderWaveform = (data: number[]) => {
+  renderWaveformSegment(data, true)
+}
+
 // Load waveform data
 const loadWaveformData = (data: number[]) => {
   if (!data || data.length === 0) return
-
-  // 调试：检查数据范围
-  let minSample = Infinity
-  let maxSample = -Infinity
-  for (let i = 0; i < Math.min(data.length, 1000); i++) {
-    if (data[i] < minSample) minSample = data[i]
-    if (data[i] > maxSample) maxSample = data[i]
-  }
-  console.log(`📊 Waveform data: ${data.length} samples, range: [${minSample.toFixed(4)}, ${maxSample.toFixed(4)}]`)
-
   renderWaveform(data)
 }
 
@@ -1383,7 +1476,9 @@ watch(zoomLevel, () => {
   if (canvas) {
     const currentCanvasWidth = canvas.width / (window.devicePixelRatio || 1)
     if (currentCanvasWidth > 0) {
-      const scale = timelineWidth.value / currentCanvasWidth
+      // 计算相对于当前渲染位置的缩放
+      const lastStart = lastRenderedRange.value?.start ?? 0
+      const scale = timelineWidth.value / (currentCanvasWidth + lastStart) * (currentCanvasWidth / (currentCanvasWidth))
       canvas.style.transform = `scaleX(${scale})`
       canvas.style.transformOrigin = 'left top'
     }
@@ -1396,14 +1491,16 @@ watch(zoomLevel, () => {
 
   waveformRebuildTimer.value = setTimeout(() => {
     isZooming.value = false
-    // 重置 transform，重新渲染波形
+    // 重置 transform 和渲染范围缓存，强制重新渲染
     if (canvas) {
       canvas.style.transform = ''
+      canvas.style.left = '0px'
     }
+    lastRenderedRange.value = null
     if (props.waveformData && props.waveformData.length > 0) {
       loadWaveformData(props.waveformData)
     }
-  }, 400) // 400ms 防抖延迟
+  }, 200) // 200ms 防抖延迟（从 400ms 优化到 200ms）
 })
 
 // Watch for waveform data changes
@@ -1447,6 +1544,9 @@ watch(
 
 // Auto-scroll to current time
 watch(() => props.currentTime, (time) => {
+  // 如果用户正在手动滚动，不自动跟随播放指针
+  if (isUserScrolling.value) return
+  
   if (trackAreaRef.value && props.duration > 0) {
     const pixel = timeToPixel(time)
     const scrollLeft = trackAreaRef.value.scrollLeft
@@ -1534,6 +1634,11 @@ onUnmounted(() => {
   if (zoomRAF.value !== null) {
     cancelAnimationFrame(zoomRAF.value)
     zoomRAF.value = null
+  }
+  // 清理波形滚动 RAF
+  if (waveformScrollRAF.value !== null) {
+    cancelAnimationFrame(waveformScrollRAF.value)
+    waveformScrollRAF.value = null
   }
   document.removeEventListener('mousemove', handleSubtitleDrag)
   document.removeEventListener('mouseup', handleSubtitleDragEnd)
@@ -1661,13 +1766,13 @@ defineExpose({
   overflow: visible;
 }
 
-/* Canvas 波形 */
+/* Canvas 波形 - 支持分段渲染动态定位 */
 .waveform-canvas {
   position: absolute;
   top: 0;
   left: 0;
-  width: 100%;
   height: 100%;
+  /* width 和 left 由 JS 动态设置 */
 }
 
 /* 波形加载动画 - 纯 CSS 实现 */
