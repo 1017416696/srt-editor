@@ -874,6 +874,13 @@ const handleWheel = (event: WheelEvent) => {
     return
   }
 
+  // 增加最小阈值，避免触控板水平滚动时的微小垂直分量误触发缩放
+  // 只有当垂直滚动量足够大时才触发缩放
+  const MIN_ZOOM_DELTA = 10
+  if (Math.abs(event.deltaY) < MIN_ZOOM_DELTA) {
+    return
+  }
+
   event.preventDefault()
 
   // deltaY > 0 表示向下滚动（缩小），deltaY < 0 表示向上滚动（放大）
@@ -895,8 +902,8 @@ const handleWheel = (event: WheelEvent) => {
   // 计算新的缩放级别
   const newZoomLevel = Math.max(MIN_ZOOM, Math.min(zoomLevel.value * zoomFactor, MAX_ZOOM))
 
-  // 使用 applyZoom 进行节流
-  applyZoom(newZoomLevel)
+  // 使用 applyZoom 进行节流，但不自动居中播放头（保持当前滚动位置）
+  applyZoom(newZoomLevel, false)
 }
 
 // Handle subtitle double click - focus the text input
