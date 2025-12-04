@@ -402,6 +402,58 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     assignSubtitleToTracks()
   }
 
+  // 批量删除字幕（不记录历史，不支持撤销）
+  const deleteEntries = (entryIds: number[]) => {
+    if (entryIds.length === 0) return
+
+    const currentEntries = entries.value
+    
+    // 按 ID 降序排序，从后往前删除避免索引问题
+    const sortedIds = [...entryIds].sort((a, b) => b - a)
+    
+    // 记录删除前的选中状态
+    const currentSelectedIndex = currentEntries.findIndex((e) => e.id === currentEntryId.value)
+    const wasSelectedDeleted = entryIds.includes(currentEntryId.value ?? -1)
+    
+    // 找到最小的被删除索引，用于后续选择
+    const minDeletedIndex = Math.min(
+      ...entryIds.map(id => currentEntries.findIndex(e => e.id === id)).filter(i => i !== -1)
+    )
+
+    logger.info('批量删除字幕', { count: entryIds.length, ids: entryIds })
+
+    // 删除字幕
+    sortedIds.forEach(entryId => {
+      const index = currentEntries.findIndex((e) => e.id === entryId)
+      if (index !== -1) {
+        currentEntries.splice(index, 1)
+      }
+    })
+
+    // 重新编号
+    currentEntries.forEach((e, i) => {
+      e.id = i + 1
+    })
+
+    // 更新选中状态
+    if (wasSelectedDeleted) {
+      // 选择被删除位置附近的字幕
+      const newEntry = currentEntries[minDeletedIndex] || currentEntries[minDeletedIndex - 1] || currentEntries[0]
+      currentEntryId.value = newEntry?.id || null
+    } else if (currentSelectedIndex !== -1) {
+      // 重新计算当前选中字幕的新索引
+      const deletedBeforeCurrent = entryIds.filter(id => {
+        const idx = entries.value.findIndex(e => e.id === id)
+        return idx !== -1 && idx < currentSelectedIndex
+      }).length
+      const newIndex = currentSelectedIndex - deletedBeforeCurrent
+      currentEntryId.value = currentEntries[newIndex]?.id || null
+    }
+
+    detectTimeConflicts()
+    assignSubtitleToTracks()
+  }
+
 
   // 分割字幕
   const splitEntry = (entryId: number, splitTimeMs: number) => {
@@ -1033,6 +1085,7 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     startDragging,
     endDragging,
     deleteEntry,
+    deleteEntries,
     splitEntry,
     mergeEntries,
     addEntry,

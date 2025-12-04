@@ -37,7 +37,7 @@ export const useConfigStore = defineStore('config', () => {
     { key: 'ArrowRight', description: '字幕后移100ms', action: 'move-subtitle-right' },
     { key: 'Enter', description: '编辑字幕', action: 'edit-subtitle' },
     { key: 'Escape', description: '退出编辑', action: 'exit-edit' },
-    { key: 'Delete', description: '删除字幕', action: 'delete-subtitle' },
+    { key: 'Delete/Backspace', description: '删除字幕（支持多选）', action: 'delete-subtitle' },
     { key: 'Tab', description: '保存并下一条', action: 'save-and-next' },
     { key: 'Shift+Tab', description: '保存并上一条', action: 'save-and-prev' },
     { key: 'Ctrl+S', description: '保存文件', action: 'save-file' },

@@ -171,6 +171,7 @@ const emit = defineEmits<{
   splitSubtitle: [id: number, splitTimeMs: number]
   dragStart: [ids: number[]]
   dragEnd: []
+  deleteSelectedSubtitles: [ids: number[]]
 }>()
 
 // Refs
@@ -1729,13 +1730,34 @@ watch(() => props.scissorMode, (isScissorMode) => {
   }
 })
 
+// 请求删除选中的字幕
+const requestDeleteSelectedSubtitles = () => {
+  if (selectedSubtitleIds.value.size === 0) return
+  const ids = Array.from(selectedSubtitleIds.value)
+  emit('deleteSelectedSubtitles', ids)
+}
+
+// 清除选择
+const clearSelection = () => {
+  selectedSubtitleIds.value.clear()
+  emit('selectSubtitles', [])
+}
+
+// 获取选中的字幕 ID
+const getSelectedSubtitleIds = () => {
+  return Array.from(selectedSubtitleIds.value)
+}
+
 // Expose methods to parent component
 defineExpose({
   zoomIn,
   zoomOut,
   setZoom,
   fitToWidth,
-  zoomLevel
+  zoomLevel,
+  requestDeleteSelectedSubtitles,
+  clearSelection,
+  getSelectedSubtitleIds
 })
 </script>
 

@@ -495,6 +495,41 @@ const handleSplitSubtitle = async (id: number, splitTimeMs: number) => {
   isScissorMode.value = false
 }
 
+// 批量删除选中的字幕（时间轴多选删除）
+const handleDeleteSelectedSubtitles = async (ids: number[]) => {
+  if (ids.length === 0) return
+  
+  const confirmMessage = ids.length === 1
+    ? `删除后无法恢复，确定删除字幕 #${ids[0]} 吗？`
+    : `删除后无法恢复，确定删除选中的 ${ids.length} 条字幕吗？`
+  
+  try {
+    await ElMessageBox.confirm(confirmMessage, '删除确认', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    
+    if (audioStore.playerState.isPlaying) audioStore.pause()
+    
+    // 使用批量删除方法
+    subtitleStore.deleteEntries(ids)
+    
+    // 清除时间轴选择
+    selectedSubtitleIds.value = []
+    waveformViewerRef.value?.clearSelection()
+    
+    // 保存文件
+    if (subtitleStore.currentFilePath) {
+      try { await subtitleStore.saveToFile() } catch {}
+    }
+    
+    ElMessage.success({ message: `已删除 ${ids.length} 条字幕`, duration: 1500 })
+  } catch (error) {
+    // 用户取消或其他错误，静默处理
+  }
+}
+
 // 侧边栏操作
 const handleScissor = () => {
   if (!hasAudio.value) {
@@ -618,8 +653,16 @@ const handleKeydown = (e: KeyboardEvent) => {
   const target = e.target as HTMLElement
   const isInTextInput = target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement
 
-  if (e.key === 'Backspace' && !isInTextInput) {
+  // Delete/Backspace 键删除时间轴选中的字幕
+  if ((e.key === 'Delete' || e.key === 'Backspace') && !isInTextInput) {
     e.preventDefault()
+    // 如果时间轴有多选字幕，删除选中的字幕
+    if (selectedSubtitleIds.value.length > 0) {
+      handleDeleteSelectedSubtitles(selectedSubtitleIds.value)
+    } else if (currentEntry.value) {
+      // 否则删除当前选中的单个字幕
+      handleDeleteEntry()
+    }
     return
   }
 
@@ -756,6 +799,7 @@ onBeforeUnmount(() => {
         @split-subtitle="handleSplitSubtitle"
         @drag-start="handleDragStart"
         @drag-end="handleDragEnd"
+        @delete-selected-subtitles="handleDeleteSelectedSubtitles"
       />
     </div>
 
