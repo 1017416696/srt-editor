@@ -28,7 +28,7 @@ const emit = defineEmits<{
       <button
         class="sidebar-btn"
         @click="emit('add-subtitle')"
-        title="添加字幕"
+        title="添加字幕 (N)"
       >
         <el-icon><DocumentAdd /></el-icon>
       </button>
