@@ -136,6 +136,51 @@ const splitShortcut = (key: string): string[] => {
 
 // 应用版本
 const appVersion = '0.0.4'
+
+// 快捷键分类
+const shortcutCategories = computed(() => {
+  const categories = [
+    {
+      name: '播放控制',
+      actions: ['toggle-play']
+    },
+    {
+      name: '字幕导航',
+      actions: ['prev-subtitle', 'next-subtitle']
+    },
+    {
+      name: '字幕编辑',
+      actions: ['new-subtitle', 'delete-subtitle', 'split-subtitle', 'merge-subtitles']
+    },
+    {
+      name: '时间调整',
+      actions: ['move-subtitle-left', 'move-subtitle-right', 'align-to-waveform', 'toggle-snap']
+    },
+    {
+      name: '波形缩放',
+      actions: ['zoom-in', 'zoom-out', 'zoom-reset']
+    },
+    {
+      name: '文件操作',
+      actions: ['save-file', 'open-file', 'close-tab', 'close-window']
+    },
+    {
+      name: '编辑操作',
+      actions: ['undo', 'redo', 'find', 'replace']
+    },
+    {
+      name: '其他',
+      actions: ['settings']
+    }
+  ]
+
+  return categories.map(cat => {
+    const bindings = configStore.keyBindings.filter(b => cat.actions.includes(b.action))
+    // 按 actions 数组顺序排序
+    bindings.sort((a, b) => cat.actions.indexOf(a.action) - cat.actions.indexOf(b.action))
+    return { ...cat, bindings }
+  }).filter(cat => cat.bindings.length > 0)
+})
 </script>
 
 <template>
@@ -235,19 +280,30 @@ const appVersion = '0.0.4'
             <div v-if="activeMenu === 'shortcuts'" class="content-section">
               <h2 class="section-title">快捷键列表</h2>
               
-              <div class="shortcuts-list">
+              <div class="shortcuts-categories">
                 <div
-                  v-for="binding in configStore.keyBindings"
-                  :key="binding.action"
-                  class="shortcut-item"
+                  v-for="category in shortcutCategories"
+                  :key="category.name"
+                  class="shortcut-category"
                 >
-                  <span class="shortcut-desc">{{ binding.description }}</span>
-                  <div class="shortcut-keys">
-                    <kbd
-                      v-for="(k, index) in splitShortcut(binding.key)"
-                      :key="index"
-                      class="key-cap"
-                    >{{ k }}</kbd>
+                  <div class="category-header">
+                    <span class="category-name">{{ category.name }}</span>
+                  </div>
+                  <div class="shortcuts-list">
+                    <div
+                      v-for="binding in category.bindings"
+                      :key="binding.action"
+                      class="shortcut-item"
+                    >
+                      <span class="shortcut-desc">{{ binding.description }}</span>
+                      <div class="shortcut-keys">
+                        <kbd
+                          v-for="(k, index) in splitShortcut(binding.key)"
+                          :key="index"
+                          class="key-cap"
+                        >{{ k }}</kbd>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -359,10 +415,12 @@ const appVersion = '0.0.4'
 }
 
 .settings-dialog {
-  width: 680px;
-  max-width: 90vw;
-  height: 480px;
-  max-height: 80vh;
+  width: 800px;
+  max-width: 92vw;
+  min-width: 600px;
+  height: 640px;
+  max-height: 88vh;
+  min-height: 500px;
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
@@ -415,8 +473,17 @@ const appVersion = '0.0.4'
 .settings-content {
   flex: 1;
   padding: 24px 32px;
-  overflow-y: auto;
+  overflow: hidden;
   position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.content-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
 }
 
 .close-btn {
@@ -505,49 +572,78 @@ const appVersion = '0.0.4'
 }
 
 /* 快捷键列表 */
+.shortcuts-categories {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.shortcut-category {
+  background: #fafafa;
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+
+.category-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.category-icon {
+  font-size: 14px;
+}
+
+.category-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+}
+
 .shortcuts-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .shortcut-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 0;
-  border-bottom: 1px solid #f5f5f5;
-}
-
-.shortcut-item:last-child {
-  border-bottom: none;
+  padding: 6px 0;
 }
 
 .shortcut-desc {
-  font-size: 14px;
-  color: #333;
+  font-size: 13px;
+  color: #444;
 }
 
 .shortcut-keys {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .key-cap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 32px;
-  height: 32px;
-  padding: 0 10px;
-  background: #f5f5f5;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  font-size: 14px;
+  min-width: 28px;
+  height: 26px;
+  padding: 0 8px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 12px;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
-  color: #666;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  color: #555;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
 /* 关于页面 */

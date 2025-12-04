@@ -53,7 +53,7 @@ export const useConfigStore = defineStore('config', () => {
     { key: 'X', description: '分割字幕', action: 'split-subtitle' },
     { key: 'M', description: '合并字幕', action: 'merge-subtitles' },
     { key: 'S', description: '拖拽吸附', action: 'toggle-snap' },
-    { key: 'A', description: '对齐到波形', action: 'align-to-waveform' },
+    { key: 'A', description: '波形对齐', action: 'align-to-waveform' },
     { key: 'Ctrl+=', description: '放大波形', action: 'zoom-in' },
     { key: 'Ctrl+-', description: '缩小波形', action: 'zoom-out' },
     { key: 'Ctrl+0', description: '重置缩放', action: 'zoom-reset' },
