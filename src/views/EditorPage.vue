@@ -532,10 +532,6 @@ const handleDeleteSelectedSubtitles = async (ids: number[]) => {
 
 // 侧边栏操作
 const handleScissor = () => {
-  if (!hasAudio.value) {
-    ElMessage.warning('请先加载音频文件')
-    return
-  }
   isScissorMode.value = !isScissorMode.value
 }
 
@@ -720,7 +716,7 @@ const handleKeydown = (e: KeyboardEvent) => {
   else if (e.key === 'ArrowUp') { e.preventDefault(); subtitleListPanelRef.value?.navigateSubtitleList('up') }
   else if (e.key === 'ArrowLeft' && currentEntry.value) { e.preventDefault(); moveSubtitlePosition(-100) }
   else if (e.key === 'ArrowRight' && currentEntry.value) { e.preventDefault(); moveSubtitlePosition(100) }
-  else if (e.key === 'x' || e.key === 'X') { e.preventDefault(); handleScissor() }
+  else if ((e.key === 'x' || e.key === 'X') && hasAudio.value) { e.preventDefault(); handleScissor() }
   else if (e.key === 'm' || e.key === 'M') { e.preventDefault(); handleMergeSubtitles() }
   else if ((e.key === 's' || e.key === 'S') && hasAudio.value) { e.preventDefault(); isSnapEnabled.value = !isSnapEnabled.value }
   else if ((e.key === 'a' || e.key === 'A') && hasAudio.value) { e.preventDefault(); handleAlignToWaveform() }

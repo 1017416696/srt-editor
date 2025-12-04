@@ -44,6 +44,7 @@ const emit = defineEmits<{
         class="sidebar-btn"
         :class="{ active: isScissorMode }"
         @click="emit('toggle-scissor')"
+        :disabled="!hasAudio"
         title="分割字幕 (X)"
       >
         <el-icon><Scissor /></el-icon>
