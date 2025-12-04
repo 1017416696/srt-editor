@@ -160,7 +160,7 @@ const shortcutCategories = computed(() => {
   const categories = [
     {
       name: '播放控制',
-      actions: ['toggle-play']
+      actions: ['toggle-play', 'speed-up', 'speed-reset']
     },
     {
       name: '字幕导航',

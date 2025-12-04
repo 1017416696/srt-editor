@@ -56,6 +56,8 @@ export const useConfigStore = defineStore('config', () => {
   // 快捷键绑定
   const keyBindings = ref<KeyBinding[]>([
     { key: 'Space', description: '播放/暂停', action: 'toggle-play' },
+    { key: 'L', description: '倍速播放', action: 'speed-up' },
+    { key: 'K', description: '正常速度', action: 'speed-reset' },
     { key: 'ArrowUp', description: '上一条字幕', action: 'prev-subtitle' },
     { key: 'ArrowDown', description: '下一条字幕', action: 'next-subtitle' },
     { key: 'ArrowLeft', description: '字幕前移100ms', action: 'move-subtitle-left' },

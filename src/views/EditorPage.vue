@@ -718,6 +718,18 @@ const handleKeydown = (e: KeyboardEvent) => {
   else if (e.key === 'ArrowRight' && currentEntry.value) { e.preventDefault(); moveSubtitlePosition(100) }
   else if ((e.key === 'x' || e.key === 'X') && hasAudio.value) { e.preventDefault(); handleScissor() }
   else if (e.key === 'm' || e.key === 'M') { e.preventDefault(); handleMergeSubtitles() }
+  // 倍速播放快捷键 (仿 Final Cut Pro)
+  else if ((e.key === 'l' || e.key === 'L') && hasAudio.value) {
+    e.preventDefault()
+    const currentRate = audioStore.playerState.playbackRate
+    // 1x → 1.5x → 2x → 循环回 1x
+    const nextRate = currentRate >= 2 ? 1 : currentRate >= 1.5 ? 2 : currentRate >= 1 ? 1.5 : 1
+    audioStore.setPlaybackRate(nextRate)
+  }
+  else if ((e.key === 'k' || e.key === 'K') && hasAudio.value) {
+    e.preventDefault()
+    audioStore.setPlaybackRate(1)
+  }
   else if ((e.key === 's' || e.key === 'S') && hasAudio.value) { e.preventDefault(); isSnapEnabled.value = !isSnapEnabled.value }
   else if ((e.key === 'a' || e.key === 'A') && hasAudio.value) { e.preventDefault(); handleAlignToWaveform() }
   else if (pressedKey === 'Cmd+,' || pressedKey === 'Ctrl+,') { e.preventDefault(); showSettingsDialog.value = true }
