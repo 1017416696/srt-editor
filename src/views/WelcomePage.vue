@@ -40,6 +40,7 @@ const isTranscribing = ref(false)
 const transcriptionProgress = ref(0)
 const transcriptionMessage = ref('')
 const isCancelled = ref(false)
+const isTransitioningToEditor = ref(false)
 
 // 已下载的模型
 const downloadedModels = computed(() => availableModels.value.filter(m => m.downloaded))
@@ -255,10 +256,18 @@ const startTranscription = async () => {
     
     const fileName = selected.split('/').pop() || 'transcription.srt'
     await subtitleStore.loadSRTFile({ name: fileName.replace(/\.[^.]+$/, '.srt'), path: '', entries, encoding: 'UTF-8' })
+    
+    // 同时加载音频文件到编辑器
+    const fileExtension = selected.split('.').pop()?.toLowerCase() || 'mp3'
+    await audioStore.loadAudio({ name: fileName, path: selected, duration: 0, format: fileExtension })
+    
+    // 显示过渡动画
     isTranscribing.value = false
-    showTranscriptionDialog.value = false
-    ElMessage.success(`转录成功！生成了 ${entries.length} 条字幕`)
-    setTimeout(() => router.push('/editor'), 500)
+    isTransitioningToEditor.value = true
+    setTimeout(() => {
+      showTranscriptionDialog.value = false
+      router.push('/editor')
+    }, 800)
   } catch (error) {
     isTranscribing.value = false
     showTranscriptionDialog.value = false
@@ -282,6 +291,7 @@ const cancelTranscription = async () => {
   }
   showTranscriptionDialog.value = false
   isTranscribing.value = false
+  isTransitioningToEditor.value = false
 }
 
 const onSelectModel = (modelName: string) => {
@@ -376,62 +386,75 @@ const onSelectModel = (modelName: string) => {
       class="transcription-dialog"
       :class="{ 'is-transcribing': isTranscribing }"
     >
-      <div class="transcription-content">
+      <div class="transcription-content" :class="{ 'is-transitioning': isTransitioningToEditor }">
         <!-- 关闭按钮 -->
-        <button class="close-btn" @click="cancelTranscription">
+        <button v-if="!isTransitioningToEditor" class="close-btn" @click="cancelTranscription">
           <i class="i-mdi-close"></i>
         </button>
         
-        <!-- 动画图标区域 -->
-        <div class="transcription-animation">
-          <div class="audio-wave">
-            <span class="wave-bar"></span>
-            <span class="wave-bar"></span>
-            <span class="wave-bar"></span>
-            <span class="wave-bar"></span>
-            <span class="wave-bar"></span>
+        <!-- 过渡到编辑器的动画 -->
+        <template v-if="isTransitioningToEditor">
+          <div class="transition-animation">
+            <div class="success-icon">
+              <i class="i-mdi-check-circle"></i>
+            </div>
           </div>
-          <div class="pulse-ring"></div>
-          <div class="pulse-ring delay-1"></div>
-          <div class="pulse-ring delay-2"></div>
-        </div>
+          <p class="transition-status">正在进入编辑器...</p>
+        </template>
         
-        <!-- 进度信息 -->
-        <div class="progress-info">
-          <!-- 下载时显示真实进度条 -->
-          <template v-if="isDownloading">
-            <div class="progress-bar-container">
-              <div class="progress-bar-track">
-                <div 
-                  class="progress-bar-fill" 
-                  :style="{ width: `${Math.round(transcriptionProgress)}%` }"
-                ></div>
-                <div 
-                  class="progress-bar-glow" 
-                  :style="{ left: `${Math.round(transcriptionProgress)}%` }"
-                ></div>
+        <!-- 转录中的动画 -->
+        <template v-else>
+          <!-- 动画图标区域 -->
+          <div class="transcription-animation">
+            <div class="audio-wave">
+              <span class="wave-bar"></span>
+              <span class="wave-bar"></span>
+              <span class="wave-bar"></span>
+              <span class="wave-bar"></span>
+              <span class="wave-bar"></span>
+            </div>
+            <div class="pulse-ring"></div>
+            <div class="pulse-ring delay-1"></div>
+            <div class="pulse-ring delay-2"></div>
+          </div>
+          
+          <!-- 进度信息 -->
+          <div class="progress-info">
+            <!-- 下载时显示真实进度条 -->
+            <template v-if="isDownloading">
+              <div class="progress-bar-container">
+                <div class="progress-bar-track">
+                  <div 
+                    class="progress-bar-fill" 
+                    :style="{ width: `${Math.round(transcriptionProgress)}%` }"
+                  ></div>
+                  <div 
+                    class="progress-bar-glow" 
+                    :style="{ left: `${Math.round(transcriptionProgress)}%` }"
+                  ></div>
+                </div>
               </div>
-            </div>
-            <div class="progress-stats">
-              <span class="progress-percentage">{{ Math.round(transcriptionProgress) }}%</span>
-              <span class="progress-status">{{ localizedMessage }}</span>
-            </div>
-          </template>
-          <!-- 转录时只显示状态文字 -->
-          <template v-else>
-            <p class="transcription-status">{{ localizedMessage }}</p>
-          </template>
-        </div>
-        
-        <!-- 提示信息 -->
-        <p class="transcription-hint">
-          <i class="i-mdi-information-outline"></i>
-          {{ transcriptionMessage.includes('下载') ? '首次使用需要下载模型，请耐心等待' : '转录时间取决于音频长度和模型大小' }}
-        </p>
+              <div class="progress-stats">
+                <span class="progress-percentage">{{ Math.round(transcriptionProgress) }}%</span>
+                <span class="progress-status">{{ localizedMessage }}</span>
+              </div>
+            </template>
+            <!-- 转录时只显示状态文字 -->
+            <template v-else>
+              <p class="transcription-status">{{ localizedMessage }}</p>
+            </template>
+          </div>
+          
+          <!-- 提示信息 -->
+          <p class="transcription-hint">
+            <i class="i-mdi-information-outline"></i>
+            {{ transcriptionMessage.includes('下载') ? '首次使用需要下载模型，请耐心等待' : '转录时间取决于音频长度和模型大小' }}
+          </p>
+        </template>
       </div>
       
       <template #footer>
-        <div class="dialog-footer">
+        <div v-if="!isTransitioningToEditor" class="dialog-footer">
           <el-button type="default" @click="cancelTranscription">
             取消转录
           </el-button>
@@ -765,19 +788,27 @@ const onSelectModel = (modelName: string) => {
 
 /* 转录对话框 */
 :deep(.transcription-dialog) {
+  user-select: none;
+  
   .el-dialog__header {
     display: none;
   }
   .el-dialog__body {
     padding: 0;
+    user-select: none;
   }
   .el-dialog__footer {
     padding: 0 24px 20px;
     border-top: none;
+    user-select: none;
   }
   .el-dialog {
     border-radius: 16px;
     overflow: hidden;
+  }
+  
+  * {
+    user-select: none;
   }
 }
 
@@ -788,6 +819,7 @@ const onSelectModel = (modelName: string) => {
   align-items: center;
   padding: 32px 24px 24px;
   background: linear-gradient(180deg, #f0f7ff 0%, #fff 100%);
+  user-select: none;
 }
 
 /* 关闭按钮 */
@@ -982,5 +1014,99 @@ const onSelectModel = (modelName: string) => {
 
 .dialog-footer .el-button {
   min-width: 100px;
+}
+
+/* 过渡动画 */
+.transcription-content.is-transitioning {
+  padding: 48px 24px;
+}
+
+.transition-animation {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 20px;
+}
+
+.success-icon {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #409eff 0%, #79bbff 100%);
+  border-radius: 50%;
+  animation: popIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.success-icon::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(64, 158, 255, 0.3) 0%, rgba(121, 187, 255, 0.1) 100%);
+  animation: ringPulse 0.8s ease-out;
+}
+
+.success-icon i {
+  font-size: 28px;
+  color: white;
+}
+
+@keyframes popIn {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes ringPulse {
+  0% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.3);
+    opacity: 0;
+  }
+}
+
+.transition-status {
+  font-size: 14px;
+  font-weight: 500;
+  color: #606266;
+  margin: 0;
+  animation: fadeSlideIn 0.4s ease 0.15s both;
+}
+
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+</style>
+
+<style>
+/* 全局样式 - 禁止转录对话框文字选中 */
+.transcription-dialog,
+.transcription-dialog * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }
 </style>
