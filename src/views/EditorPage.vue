@@ -866,7 +866,24 @@ const handleDismissCorrection = () => {
 // 切换当前字幕的校正标记
 const handleToggleCorrectionMark = () => {
   if (currentEntry.value) {
+    const wasMarked = currentEntry.value.needsCorrection
     subtitleStore.toggleCorrectionMark(currentEntry.value.id)
+    
+    // 如果取消了标记，且处于筛选模式，检查是否还有需要校正的字幕
+    if (wasMarked && showOnlyNeedsCorrection.value) {
+      const remainingCount = subtitleStore.needsCorrectionCount
+      if (remainingCount === 0) {
+        // 没有更多需要校正的了，关闭筛选模式
+        showOnlyNeedsCorrection.value = false
+        ElMessage.success('所有标记已处理完成')
+      } else {
+        // 自动跳转到下一条需要校正的字幕
+        const nextEntry = subtitleStore.entries.find(e => e.needsCorrection)
+        if (nextEntry) {
+          selectedEntryId.value = nextEntry.id
+        }
+      }
+    }
   }
 }
 
