@@ -205,13 +205,13 @@ const downloadWhisperModel = async (modelName: string) => {
 
 const deleteWhisperModel = async (modelName: string) => {
   try {
-    await ElMessageBox.confirm(`确定要删除模型 ${modelName} 吗？`, '删除模型', { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' })
+    await ElMessageBox.confirm(`确定要卸载模型 ${modelName} 吗？`, '卸载确认', { confirmButtonText: '卸载', cancelButtonText: '取消', type: 'warning' })
     await invoke('delete_whisper_model', { modelSize: modelName })
     await fetchWhisperModels()
-    ElMessage.success(`模型 ${modelName} 已删除`)
+    ElMessage.success(`模型 ${modelName} 已卸载`)
   } catch (e) {
     if (e !== 'cancel') {
-      ElMessage.error(`删除失败：${e instanceof Error ? e.message : '未知错误'}`)
+      ElMessage.error(`卸载失败：${e instanceof Error ? e.message : '未知错误'}`)
     }
   }
 }
@@ -529,40 +529,59 @@ const shortcutCategories = computed(() => {
             <div v-if="activeMenu === 'whisper'" class="content-section">
               <div class="section-header">
                 <h2 class="section-title">语音模型</h2>
-                <el-button @click="openModelDir">打开模型目录</el-button>
+                <el-button size="small" @click="openModelDir">
+                  <el-icon><FolderOpened /></el-icon>
+                  <span>打开模型目录</span>
+                </el-button>
               </div>
               
               <!-- Whisper 部分 -->
-              <div class="engine-section">
-                <h3 class="engine-title">Whisper (OpenAI)</h3>
+              <div class="engine-card">
+                <div class="engine-header">
+                  <div class="engine-icon openai-icon">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.985 5.985 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973V11.6a.766.766 0 0 0 .388.676l5.815 3.355-2.02 1.168a.076.076 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.872zm16.597 3.855l-5.833-3.387L15.119 7.2a.076.076 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.407-.667zm2.01-3.023l-.141-.085-4.774-2.782a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.795.795 0 0 0-.393.681zm1.097-2.365l2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z"/>
+                    </svg>
+                  </div>
+                  <div class="engine-info">
+                    <h3 class="engine-title">Whisper</h3>
+                    <span class="engine-badge">OpenAI</span>
+                  </div>
+                </div>
                 <p class="engine-desc">OpenAI 开发的语音识别模型，支持多语言，模型越大精度越高。</p>
                 
-                <div class="whisper-models-list">
+                <div class="models-grid">
                   <div
                     v-for="model in whisperModels"
                     :key="model.name"
-                    class="whisper-model-item"
-                    :class="{ 'is-default': model.downloaded && configStore.transcriptionEngine === 'whisper' && configStore.whisperModel === model.name, 'is-downloaded': model.downloaded }"
+                    class="model-card"
+                    :class="{ 
+                      'is-selected': model.downloaded && configStore.transcriptionEngine === 'whisper' && configStore.whisperModel === model.name, 
+                      'is-downloaded': model.downloaded,
+                      'is-downloading': downloadingModel === model.name
+                    }"
                     @click="model.downloaded && setDefaultModel(model.name)"
                   >
-                    <div class="model-radio">
-                      <span v-if="model.downloaded" class="radio-dot" :class="{ active: configStore.transcriptionEngine === 'whisper' && configStore.whisperModel === model.name }"></span>
-                      <span v-else class="radio-placeholder"></span>
-                    </div>
-                    <div class="model-info">
+                    <div class="model-card-header">
+                      <div class="model-select-indicator">
+                        <span class="select-dot" :class="{ 
+                          active: model.downloaded && configStore.transcriptionEngine === 'whisper' && configStore.whisperModel === model.name,
+                          disabled: !model.downloaded 
+                        }"></span>
+                      </div>
                       <span class="model-name">{{ model.name }}</span>
-                      <span class="model-size">{{ model.size }}</span>
                     </div>
-                    <div class="model-actions" @click.stop>
+                    <span class="model-size">{{ model.size }}</span>
+                    <div class="model-card-actions" @click.stop>
                       <template v-if="downloadingModel === model.name">
-                        <div class="download-progress">
-                          <el-progress :percentage="Math.round(downloadProgress)" :stroke-width="6" :show-text="false" style="width: 100px" />
+                        <div class="download-progress-inline">
+                          <el-progress :percentage="Math.round(downloadProgress)" :stroke-width="4" :show-text="false" />
                           <span class="progress-text">{{ Math.round(downloadProgress) }}%</span>
                         </div>
                       </template>
                       <template v-else>
                         <el-button v-if="!model.downloaded" size="small" type="primary" :disabled="!!downloadingModel" @click="downloadWhisperModel(model.name)">下载</el-button>
-                        <el-button v-else size="small" type="danger" plain :disabled="!!downloadingModel || (configStore.transcriptionEngine === 'whisper' && configStore.whisperModel === model.name)" @click="deleteWhisperModel(model.name)">删除</el-button>
+                        <el-button v-else size="small" type="danger" plain :disabled="!!downloadingModel || (configStore.transcriptionEngine === 'whisper' && configStore.whisperModel === model.name)" @click="deleteWhisperModel(model.name)">卸载</el-button>
                       </template>
                     </div>
                   </div>
@@ -570,58 +589,57 @@ const shortcutCategories = computed(() => {
               </div>
               
               <!-- SenseVoice 部分 -->
-              <div class="engine-section sensevoice-section">
-                <h3 class="engine-title">SenseVoice (阿里)</h3>
-                <p class="engine-desc">阿里达摩院开发的语音识别模型，中文识别效果优秀，支持情感识别。</p>
-                
-                <div class="sensevoice-status">
-                  <div class="status-item">
-                    <span class="status-label">环境状态</span>
-                    <span class="status-value" :class="{ ready: sensevoiceStatus.ready, pending: !sensevoiceStatus.ready }">
+              <div class="engine-card">
+                <div class="engine-header">
+                  <div class="engine-icon tongyi-icon">
+                    <img src="/qwen.png" alt="通义千问" />
+                  </div>
+                  <div class="engine-info">
+                    <h3 class="engine-title">SenseVoice</h3>
+                    <span class="engine-badge alibaba">阿里达摩院</span>
+                  </div>
+                  <div class="engine-status">
+                    <span class="status-badge" :class="{ ready: sensevoiceStatus.ready, pending: !sensevoiceStatus.ready }">
                       {{ sensevoiceStatus.ready ? '已就绪' : (sensevoiceStatus.env_exists ? '依赖不完整' : '未安装') }}
                     </span>
                   </div>
-                  <div v-if="!sensevoiceStatus.uv_installed" class="status-item">
-                    <span class="status-label">uv 包管理器</span>
-                    <span class="status-value pending">未安装</span>
-                  </div>
-                  <el-button size="small" text @click="fetchSensevoiceStatus">
-                    <i class="i-mdi-refresh"></i> 刷新状态
-                  </el-button>
+                </div>
+                <p class="engine-desc">阿里达摩院开发的语音识别模型，中文识别效果优秀，支持情感识别。</p>
+                
+                <div v-if="!sensevoiceStatus.uv_installed" class="env-warning">
+                  <span class="warning-icon">⚠️</span>
+                  <span>需要先安装 <a href="https://docs.astral.sh/uv/getting-started/installation/" target="_blank">uv 包管理器</a></span>
                 </div>
                 
-                <div v-if="isInstallingSensevoice" class="install-progress">
-                  <el-progress :percentage="Math.round(sensevoiceProgress)" :stroke-width="8" />
+                <div v-if="isInstallingSensevoice" class="install-progress-card">
+                  <el-progress :percentage="Math.round(sensevoiceProgress)" :stroke-width="6" />
                   <span class="install-message">{{ sensevoiceMessage }}</span>
                 </div>
                 
-                <div class="sensevoice-actions">
+                <div class="engine-content">
                   <template v-if="!sensevoiceStatus.ready">
                     <el-button 
                       type="primary" 
                       :disabled="isInstallingSensevoice || !sensevoiceStatus.uv_installed"
                       @click="installSensevoice"
                     >
-                      {{ isInstallingSensevoice ? '安装中...' : '安装 SenseVoice 环境' }}
+                      {{ isInstallingSensevoice ? '安装中...' : '安装环境' }}
                     </el-button>
-                    <p v-if="!sensevoiceStatus.uv_installed" class="uv-hint">
-                      需要先安装 <a href="https://docs.astral.sh/uv/getting-started/installation/" target="_blank">uv 包管理器</a>
-                    </p>
                   </template>
                   <template v-else>
                     <div 
-                      class="whisper-model-item is-downloaded"
-                      :class="{ 'is-default': configStore.transcriptionEngine === 'sensevoice' }"
+                      class="model-card single-model"
+                      :class="{ 'is-selected': configStore.transcriptionEngine === 'sensevoice' }"
                       @click="configStore.transcriptionEngine = 'sensevoice'; configStore.saveWhisperSettings()"
                     >
-                      <div class="model-radio">
-                        <span class="radio-dot" :class="{ active: configStore.transcriptionEngine === 'sensevoice' }"></span>
-                      </div>
-                      <div class="model-info">
+                      <div class="model-card-header">
+                        <div class="model-select-indicator">
+                          <span class="select-dot" :class="{ active: configStore.transcriptionEngine === 'sensevoice' }"></span>
+                        </div>
                         <span class="model-name">SenseVoiceSmall</span>
-                        <span class="model-size">~500 MB</span>
                       </div>
-                      <div class="model-actions" @click.stop>
+                      <span class="model-size">~500 MB</span>
+                      <div class="model-card-actions" @click.stop>
                         <el-button size="small" type="danger" plain :disabled="configStore.transcriptionEngine === 'sensevoice'" @click="uninstallSensevoice">卸载</el-button>
                       </div>
                     </div>
@@ -630,54 +648,60 @@ const shortcutCategories = computed(() => {
               </div>
               
               <!-- FireRedASR 部分 -->
-              <div class="engine-section firered-section">
-                <h3 class="engine-title">FireRedASR (小红书)</h3>
-                <p class="engine-desc">小红书开源的语音识别模型，用于字幕二次校正，可提升识别准确率。</p>
-                
-                <div class="sensevoice-status">
-                  <div class="status-item">
-                    <span class="status-label">环境状态</span>
-                    <span class="status-value" :class="{ ready: fireredStatus.ready, pending: !fireredStatus.ready }">
+              <div class="engine-card">
+                <div class="engine-header">
+                  <div class="engine-icon xiaohongshu-icon">
+                    <svg viewBox="0 0 100 100" fill="none">
+                      <rect width="100" height="100" rx="20" fill="#fe2c55"/>
+                      <text x="50" y="62" text-anchor="middle" fill="#fff" font-size="28" font-weight="700" font-family="PingFang SC, Microsoft YaHei, sans-serif">小红书</text>
+                    </svg>
+                  </div>
+                  <div class="engine-info">
+                    <h3 class="engine-title">FireRedASR</h3>
+                    <span class="engine-badge xiaohongshu">小红书</span>
+                  </div>
+                  <div class="engine-status">
+                    <span class="status-badge" :class="{ ready: fireredStatus.ready, pending: !fireredStatus.ready }">
                       {{ fireredStatus.ready ? '已就绪' : (fireredStatus.env_exists ? '依赖不完整' : '未安装') }}
                     </span>
                   </div>
-                  <el-button size="small" text @click="fetchFireredStatus">
-                    <i class="i-mdi-refresh"></i> 刷新状态
-                  </el-button>
+                </div>
+                <p class="engine-desc">小红书开源的语音识别模型，用于字幕二次校正，可提升识别准确率。</p>
+                
+                <div v-if="!fireredStatus.uv_installed" class="env-warning">
+                  <span class="warning-icon">⚠️</span>
+                  <span>需要先安装 <a href="https://docs.astral.sh/uv/getting-started/installation/" target="_blank">uv 包管理器</a></span>
                 </div>
                 
-                <div v-if="isInstallingFirered" class="install-progress">
-                  <el-progress :percentage="Math.round(fireredProgress)" :stroke-width="8" />
+                <div v-if="isInstallingFirered" class="install-progress-card">
+                  <el-progress :percentage="Math.round(fireredProgress)" :stroke-width="6" />
                   <span class="install-message">{{ fireredMessage }}</span>
                 </div>
                 
-                <div class="sensevoice-actions">
+                <div class="engine-content">
                   <template v-if="!fireredStatus.ready">
                     <el-button 
                       type="primary" 
                       :disabled="isInstallingFirered || !fireredStatus.uv_installed"
                       @click="installFirered"
                     >
-                      {{ isInstallingFirered ? '安装中...' : '安装 FireRedASR 环境' }}
+                      {{ isInstallingFirered ? '安装中...' : '安装环境' }}
                     </el-button>
-                    <p v-if="!fireredStatus.uv_installed" class="uv-hint">
-                      需要先安装 <a href="https://docs.astral.sh/uv/getting-started/installation/" target="_blank">uv 包管理器</a>
-                    </p>
                   </template>
                   <template v-else>
-                    <div class="whisper-model-item is-downloaded">
-                      <div class="model-info">
+                    <div class="model-card single-model is-downloaded">
+                      <div class="model-card-header">
                         <span class="model-name">FireRedASR-AED</span>
-                        <span class="model-size">~600 MB</span>
                       </div>
-                      <div class="model-actions" @click.stop>
+                      <span class="model-size">~600 MB</span>
+                      <div class="model-card-actions" @click.stop>
                         <el-button size="small" type="danger" plain @click="uninstallFirered">卸载</el-button>
                       </div>
                     </div>
                     
                     <!-- FireRedASR 校正选项 -->
-                    <div class="firered-options">
-                      <div class="option-item">
+                    <div class="engine-options">
+                      <div class="option-row">
                         <div class="option-info">
                           <span class="option-label">保留原始英文大小写</span>
                           <span class="option-desc">校正时保留原字幕中英文字母的大小写格式</span>
@@ -692,15 +716,18 @@ const shortcutCategories = computed(() => {
                 </div>
               </div>
               
-              <div class="whisper-tips">
-                <h4>模型说明</h4>
-                <ul>
-                  <li><strong>Whisper tiny/base</strong> - 快速预览，适合短音频</li>
-                  <li><strong>Whisper small/medium</strong> - 平衡选择，日常使用</li>
-                  <li><strong>Whisper large/turbo</strong> - 高精度，专业场景</li>
-                  <li><strong>SenseVoice</strong> - 中文识别优秀，首次使用需下载模型</li>
-                  <li><strong>FireRedASR</strong> - 字幕校正专用，可对已有字幕进行二次校正</li>
-                </ul>
+              <div class="tips-card">
+                <div class="tips-header">
+                  <span class="tips-icon">💡</span>
+                  <span class="tips-title">模型说明</span>
+                </div>
+                <div class="tips-content">
+                  <div class="tip-item"><span class="tip-label">Whisper tiny/base</span><span class="tip-desc">快速预览，适合短音频</span></div>
+                  <div class="tip-item"><span class="tip-label">Whisper small/medium</span><span class="tip-desc">平衡选择，日常使用</span></div>
+                  <div class="tip-item"><span class="tip-label">Whisper large/turbo</span><span class="tip-desc">高精度，专业场景</span></div>
+                  <div class="tip-item"><span class="tip-label">SenseVoice</span><span class="tip-desc">中文识别优秀，首次使用需下载模型</span></div>
+                  <div class="tip-item"><span class="tip-label">FireRedASR</span><span class="tip-desc">字幕校正专用，可对已有字幕进行二次校正</span></div>
+                </div>
               </div>
             </div>
 
@@ -949,7 +976,13 @@ const shortcutCategories = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
+}
+
+.section-header .el-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* 设置项 */
@@ -1324,67 +1357,164 @@ const shortcutCategories = computed(() => {
   color: #666;
 }
 
-/* 语音模型页面 */
-.engine-section {
-  margin-bottom: 24px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #f0f0f0;
+/* 语音模型页面 - 新设计 */
+.engine-card {
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+  transition: box-shadow 0.2s;
 }
 
-.engine-section:last-of-type {
-  border-bottom: none;
+.engine-card:hover {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+.engine-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.engine-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.engine-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.openai-icon {
+  background: #000;
+  color: #fff;
+}
+
+.tongyi-icon {
+  background: transparent;
+  padding: 0;
+}
+
+.tongyi-icon img {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+}
+
+.xiaohongshu-icon {
+  background: transparent;
+  padding: 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.xiaohongshu-icon svg {
+  width: 40px;
+  height: 40px;
+}
+
+.engine-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
 }
 
 .engine-title {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   color: #333;
-  margin: 0 0 6px;
+  margin: 0;
+}
+
+.engine-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #f0f0f0;
+  color: #666;
+}
+
+.engine-badge.alibaba {
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: #fff;
+}
+
+.engine-badge.xiaohongshu {
+  background: linear-gradient(135deg, #fe2c55 0%, #ff6b6b 100%);
+  color: #fff;
+}
+
+.engine-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-badge {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 12px;
+}
+
+.status-badge.ready {
+  color: #52c41a;
+  background: rgba(82, 196, 26, 0.1);
+}
+
+.status-badge.pending {
+  color: #faad14;
+  background: rgba(250, 173, 20, 0.1);
 }
 
 .engine-desc {
   font-size: 13px;
   color: #666;
   line-height: 1.5;
-  margin: 0 0 12px;
+  margin: 0 0 16px;
 }
 
-/* SenseVoice 状态 */
-.sensevoice-status {
-  display: flex;
-  gap: 20px;
-  margin-bottom: 12px;
+.engine-content {
+  margin-top: 12px;
 }
 
-.status-item {
+/* 环境警告 */
+.env-warning {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.status-label {
+  padding: 10px 14px;
+  background: #fffbe6;
+  border: 1px solid #ffe58f;
+  border-radius: 8px;
+  margin-bottom: 12px;
   font-size: 13px;
-  color: #666;
+  color: #ad6800;
 }
 
-.status-value {
-  font-size: 13px;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: 4px;
+.env-warning a {
+  color: #1890ff;
+  text-decoration: none;
 }
 
-.status-value.ready {
-  color: #67c23a;
-  background: rgba(103, 194, 58, 0.1);
+.env-warning a:hover {
+  text-decoration: underline;
 }
 
-.status-value.pending {
-  color: #e6a23c;
-  background: rgba(230, 162, 60, 0.1);
-}
-
-.install-progress {
+/* 安装进度 */
+.install-progress-card {
+  padding: 12px 16px;
+  background: #f6f8fa;
+  border-radius: 8px;
   margin-bottom: 12px;
 }
 
@@ -1392,195 +1522,205 @@ const shortcutCategories = computed(() => {
   display: block;
   font-size: 12px;
   color: #909399;
-  margin-top: 6px;
-}
-
-.sensevoice-actions {
-  margin-top: 12px;
-}
-
-.uv-hint {
-  font-size: 12px;
-  color: #909399;
   margin-top: 8px;
 }
 
-.uv-hint a {
-  color: #409eff;
-  text-decoration: none;
+/* 模型网格 */
+.models-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
 }
 
-.uv-hint a:hover {
-  text-decoration: underline;
-}
-
-.whisper-intro {
-  margin-bottom: 20px;
-}
-
-.whisper-intro p {
-  font-size: 13px;
-  color: #666;
-  line-height: 1.6;
-  margin: 0;
-}
-
-.whisper-models-list {
+.model-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 24px;
+  padding: 14px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  transition: all 0.2s;
+  cursor: default;
 }
 
-.whisper-model-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: #f9f9f9;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  transition: all 0.15s;
-}
-
-.whisper-model-item.is-downloaded {
+.model-card.is-downloaded {
   cursor: pointer;
 }
 
-.whisper-model-item.is-downloaded:hover {
-  background: #f0f0f0;
+.model-card.is-downloaded:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
 }
 
-.model-radio {
-  width: 20px;
+.model-card.is-selected {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+.model-card.is-downloading {
+  background: #fefce8;
+  border-color: #fde047;
+}
+
+.model-card.single-model {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+.model-card.single-model .model-card-header {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.model-card.single-model .model-size {
+  margin-bottom: 0;
+}
+
+.model-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.model-select-indicator {
+  width: 16px;
+  height: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.radio-dot {
-  width: 16px;
-  height: 16px;
+.select-dot {
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  border: 2px solid #ddd;
+  border: 2px solid #d1d5db;
   transition: all 0.2s;
 }
 
-.radio-dot.active {
-  border-color: #409eff;
-  background: #409eff;
-  box-shadow: inset 0 0 0 3px #fff;
+.select-dot.active {
+  border-color: #3b82f6;
+  background: #3b82f6;
+  box-shadow: inset 0 0 0 2px #fff;
 }
 
-.radio-placeholder {
-  width: 16px;
-  height: 16px;
-}
-
-.model-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1;
+.select-dot.disabled {
+  border-color: #e5e7eb;
+  background: #f3f4f6;
 }
 
 .model-name {
   font-size: 14px;
   font-weight: 600;
-  color: #333;
-  min-width: 60px;
+  color: #374151;
 }
 
 .model-size {
-  font-size: 13px;
-  color: #888;
+  font-size: 12px;
+  color: #9ca3af;
+  margin-bottom: 10px;
 }
 
-.whisper-model-item.is-default {
-  background: #f5f9ff;
-  border-color: #d9ecff;
+.model-card-actions {
+  margin-top: auto;
 }
 
-.model-actions {
+.download-progress-inline {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.download-progress {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.download-progress-inline .el-progress {
+  width: 100%;
 }
 
 .progress-text {
-  font-size: 12px;
-  color: #666;
-  min-width: 36px;
+  font-size: 11px;
+  color: #6b7280;
+  text-align: center;
 }
 
-/* FireRedASR 选项 */
-.firered-options {
+/* 引擎选项 */
+.engine-options {
   margin-top: 16px;
-  padding: 12px 16px;
-  background: #f9f9f9;
-  border-radius: 8px;
+  padding: 14px 16px;
+  background: #f9fafb;
+  border-radius: 10px;
 }
 
-.firered-options .option-item {
+.option-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.firered-options .option-info {
+.option-info {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.firered-options .option-label {
+.option-label {
   font-size: 14px;
   font-weight: 500;
-  color: #333;
+  color: #374151;
 }
 
-.firered-options .option-desc {
+.option-desc {
   font-size: 12px;
-  color: #909399;
+  color: #9ca3af;
 }
 
-.whisper-tips {
-  background: #fafafa;
-  border-radius: 8px;
-  padding: 16px;
+/* 提示卡片 */
+.tips-card {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 1px solid #bae6fd;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-top: 8px;
 }
 
-.whisper-tips h4 {
+.tips-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tips-icon {
+  font-size: 16px;
+}
+
+.tips-title {
   font-size: 14px;
   font-weight: 600;
-  color: #333;
-  margin: 0 0 12px;
+  color: #0369a1;
 }
 
-.whisper-tips ul {
-  margin: 0;
-  padding-left: 20px;
+.tips-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.whisper-tips li {
+.tip-item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   font-size: 13px;
-  color: #666;
-  line-height: 1.8;
 }
 
-.whisper-tips li strong {
-  color: #333;
+.tip-label {
+  font-weight: 500;
+  color: #0c4a6e;
+  min-width: 140px;
 }
 
-.whisper-tips .whisper-hint {
-  margin-top: 12px;
-  font-size: 12px;
-  color: #999;
+.tip-desc {
+  color: #0369a1;
 }
 
 /* 过渡动画 */
