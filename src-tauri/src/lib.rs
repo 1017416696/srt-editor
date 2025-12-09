@@ -98,6 +98,12 @@ fn trigger_open_file(window: tauri::Window) -> Result<(), String> {
     window.emit("menu:open-file", ()).map_err(|e| e.to_string())
 }
 
+/// 检查文件是否存在
+#[tauri::command]
+fn check_file_exists(file_path: String) -> bool {
+    std::path::Path::new(&file_path).exists()
+}
+
 /// 获取日志目录路径
 #[tauri::command]
 fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
@@ -766,6 +772,7 @@ pub fn run() {
             read_audio_file,
             generate_audio_waveform,
             trigger_open_file,
+            check_file_exists,
             update_recent_files_menu,
             get_log_path,
             show_log_in_folder,

@@ -376,11 +376,68 @@ const startSensevoiceTranscription = async (audioPath: string) => {
 // 完成转录，跳转编辑器
 const finishTranscription = async (audioPath: string, entries: SubtitleEntry[]) => {
   const fileName = audioPath.split('/').pop() || 'transcription.srt'
-  await subtitleStore.loadSRTFile({ name: fileName.replace(/\.[^.]+$/, '.srt'), path: '', entries, encoding: 'UTF-8' })
-  
+  const srtFileName = fileName.replace(/\.[^.]+$/, '.srt')
+  // 生成与音频文件同目录的 srt 文件路径
+  let srtPath = audioPath.replace(/\.[^.]+$/, '.srt')
+
+  // 检查文件是否已存在
+  const fileExists = await invoke<boolean>('check_file_exists', { filePath: srtPath })
+  if (fileExists) {
+    // 暂时隐藏转录对话框以显示确认框
+    showTranscriptionDialog.value = false
+
+    try {
+      await ElMessageBox.confirm(
+        `文件 "${srtFileName}" 已存在，是否覆盖？`,
+        '文件已存在',
+        {
+          confirmButtonText: '覆盖',
+          cancelButtonText: '另存为',
+          distinguishCancelAndClose: true,
+          type: 'warning',
+        }
+      )
+      // 用户选择覆盖，继续使用原路径
+    } catch (action) {
+      if (action === 'cancel') {
+        // 用户选择另存为
+        const { save } = await import('@tauri-apps/plugin-dialog')
+        const newPath = await save({
+          filters: [{ name: 'SRT 字幕文件', extensions: ['srt'] }],
+          defaultPath: srtPath,
+        })
+        if (newPath) {
+          srtPath = newPath
+        } else {
+          // 用户取消了另存为，不保存文件但继续进入编辑器
+          srtPath = ''
+        }
+      } else {
+        // 用户关闭了对话框，不保存文件但继续进入编辑器
+        srtPath = ''
+      }
+    }
+  }
+
+  await subtitleStore.loadSRTFile({
+    name: srtFileName,
+    path: srtPath,
+    entries,
+    encoding: 'UTF-8',
+  })
+
+  // 自动保存字幕文件（如果有路径）
+  if (srtPath) {
+    try {
+      await subtitleStore.saveToFile()
+    } catch (error) {
+      console.error('自动保存字幕文件失败:', error)
+    }
+  }
+
   const fileExtension = audioPath.split('.').pop()?.toLowerCase() || 'mp3'
   await audioStore.loadAudio({ name: fileName, path: audioPath, duration: 0, format: fileExtension })
-  
+
   isTranscribing.value = false
   isTransitioningToEditor.value = true
   setTimeout(() => {
