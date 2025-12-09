@@ -184,6 +184,12 @@ export const useConfigStore = defineStore('config', () => {
     localStorage.removeItem('srt-editor-recent-files')
   }
 
+  // 删除单个最近文件
+  const removeRecentFile = (filePath: string) => {
+    recentFiles.value = recentFiles.value.filter(f => f.path !== filePath)
+    localStorage.setItem('srt-editor-recent-files', JSON.stringify(recentFiles.value))
+  }
+
   // 初始化时加载配置
   loadConfig()
   loadPunctuation()
@@ -231,6 +237,7 @@ export const useConfigStore = defineStore('config', () => {
     loadConfig,
     addRecentFile,
     clearRecentFiles,
+    removeRecentFile,
     savePunctuation,
     resetPunctuation,
     saveWhisperSettings,

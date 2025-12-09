@@ -208,7 +208,16 @@ const openRecentFile = async (filePath: string) => {
   } catch (error) {
     isLoading.value = false; loadingMessage.value = ''
     await ElMessageBox.alert(`加载文件失败：${error instanceof Error ? error.message : '文件可能已被移动或删除'}`, '加载失败', { confirmButtonText: '确定', type: 'error' })
+    // 文件加载失败后自动从最近列表中删除
+    configStore.removeRecentFile(filePath)
+    if ((window as any).__updateRecentFilesMenu) await (window as any).__updateRecentFilesMenu()
   }
+}
+
+const removeRecentFile = (filePath: string, event: MouseEvent) => {
+  event.stopPropagation()
+  configStore.removeRecentFile(filePath)
+  if ((window as any).__updateRecentFilesMenu) (window as any).__updateRecentFilesMenu()
 }
 
 let lastClickTime = 0
@@ -485,6 +494,9 @@ const onSelectModel = (command: string) => {
               <i class="i-mdi-file-document-outline file-icon"></i>
               <span class="recent-name">{{ file.name }}</span>
               <span class="recent-time">{{ formatRelativeTime(file.lastOpened) }}</span>
+              <button class="recent-delete-btn" @click="removeRecentFile(file.path, $event)" title="从列表中移除">
+                <i class="i-mdi-close"></i>
+              </button>
             </div>
           </div>
         </div>
@@ -892,6 +904,31 @@ const onSelectModel = (command: string) => {
   font-size: 12px;
   color: #999;
   flex-shrink: 0;
+}
+
+.recent-delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #c0c4cc;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+.recent-delete-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #909399;
+}
+
+.recent-delete-btn i {
+  font-size: 14px;
 }
 
 
