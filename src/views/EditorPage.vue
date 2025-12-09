@@ -723,7 +723,8 @@ const startCorrection = async () => {
     const result = await invoke<CorrectionEntry[]>('correct_subtitles_with_firered', {
       srtPath: subtitleStore.currentFilePath,
       audioPath: audioStore.audioFile?.path,
-      language: 'zh'
+      language: 'zh',
+      preserveCase: configStore.fireredPreserveCase
     })
     
     console.log('Correction result:', result)
@@ -831,7 +832,8 @@ const handleCorrectSingleEntry = async () => {
       startMs,
       endMs,
       originalText: entry.text,
-      language: 'zh'
+      language: 'zh',
+      preserveCase: configStore.fireredPreserveCase
     })
     
     console.log('Single correction result:', result)

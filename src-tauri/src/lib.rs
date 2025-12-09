@@ -231,8 +231,9 @@ async fn correct_subtitles_with_firered(
     srt_path: String,
     audio_path: String,
     language: String,
+    preserve_case: Option<bool>,
 ) -> Result<Vec<CorrectionEntry>, String> {
-    correct_with_firered(srt_path, audio_path, language, window).await
+    correct_with_firered(srt_path, audio_path, language, preserve_case.unwrap_or(true), window).await
 }
 
 /// 卸载 FireRedASR 环境
@@ -267,8 +268,9 @@ async fn correct_single_subtitle(
     end_ms: u32,
     original_text: String,
     language: String,
+    preserve_case: Option<bool>,
 ) -> Result<SingleCorrectionResult, String> {
-    correct_single_entry(audio_path, start_ms, end_ms, original_text, language).await
+    correct_single_entry(audio_path, start_ms, end_ms, original_text, language, preserve_case.unwrap_or(true)).await
 }
 
 /// 打开模型目录

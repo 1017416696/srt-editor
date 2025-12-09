@@ -348,7 +348,49 @@ def parse_srt(srt_path):
     
     return entries
 
-def correct_subtitles(srt_path, audio_path, language="zh"):
+def preserve_original_case(original, corrected):
+    """保留原始文本中英文字母的大小写
+    
+    FireRedASR 会将英文字母转换为大写，这个函数将校正后的文本中的英文字母
+    恢复为原始文本中对应位置的大小写。
+    
+    算法：
+    1. 提取原始文本中的所有英文字母及其大小写
+    2. 提取校正文本中的所有英文字母
+    3. 如果两者的字母序列（忽略大小写）相同，则按原始大小写恢复
+    """
+    if not original or not corrected:
+        return corrected
+    
+    # 提取原始文本中的英文字母
+    orig_letters = [(i, c) for i, c in enumerate(original) if c.isalpha() and c.isascii()]
+    
+    # 提取校正文本中的英文字母位置
+    corr_letter_positions = [i for i, c in enumerate(corrected) if c.isalpha() and c.isascii()]
+    
+    # 如果字母数量不同，无法简单映射，返回原始校正结果
+    if len(orig_letters) != len(corr_letter_positions):
+        return corrected
+    
+    # 检查字母序列是否相同（忽略大小写）
+    orig_seq = ''.join(c.lower() for _, c in orig_letters)
+    corr_seq = ''.join(corrected[i].lower() for i in corr_letter_positions)
+    
+    if orig_seq != corr_seq:
+        # 字母序列不同，说明校正改变了内容，保留校正结果
+        return corrected
+    
+    # 恢复原始大小写
+    result = list(corrected)
+    for (_, orig_char), corr_pos in zip(orig_letters, corr_letter_positions):
+        if orig_char.isupper():
+            result[corr_pos] = result[corr_pos].upper()
+        else:
+            result[corr_pos] = result[corr_pos].lower()
+    
+    return ''.join(result)
+
+def correct_subtitles(srt_path, audio_path, language="zh", preserve_case=True):
     """使用 FireRedASR 校正字幕"""
     import torch
     import argparse
@@ -405,6 +447,10 @@ def correct_subtitles(srt_path, audio_path, language="zh"):
                 # FireRedAsr.transcribe(batch_uttid, batch_wav_path, args)
                 res = model.transcribe([f"utt_{i}"], [chunk_file], {"language": language})
                 corrected_text = res[0].get("text", "").strip() if res else ""
+                
+                # 如果启用了保留大小写，恢复原始英文大小写
+                if preserve_case and corrected_text:
+                    corrected_text = preserve_original_case(original_text, corrected_text)
             except Exception as e:
                 print(f"识别片段 {i+1} 失败: {e}", file=sys.stderr)
                 corrected_text = original_text
@@ -438,10 +484,12 @@ def main():
     parser.add_argument("audio_path", help="音频文件路径")
     parser.add_argument("--language", default="zh", help="语言代码")
     parser.add_argument("--output", help="输出 JSON 文件路径")
+    parser.add_argument("--preserve-case", action="store_true", default=True, help="保留原始英文大小写")
+    parser.add_argument("--no-preserve-case", action="store_false", dest="preserve_case", help="不保留原始英文大小写")
     args = parser.parse_args()
     
     try:
-        result = correct_subtitles(args.srt_path, args.audio_path, args.language)
+        result = correct_subtitles(args.srt_path, args.audio_path, args.language, args.preserve_case)
         if args.output:
             with open(args.output, "w", encoding="utf-8") as f:
                 json.dump(result, f, ensure_ascii=False, indent=2)
@@ -488,6 +536,7 @@ pub async fn correct_with_firered(
     srt_path: String,
     audio_path: String,
     language: String,
+    preserve_case: bool,
     window: Window,
 ) -> Result<Vec<CorrectionEntry>, String> {
     use std::process::Stdio;
@@ -531,15 +580,25 @@ pub async fn correct_with_firered(
         _ => "zh",
     };
     
+    // 构建命令参数
+    let mut args = vec![
+        script_path.to_str().unwrap().to_string(),
+        srt_path.clone(),
+        audio_path.clone(),
+        "--language".to_string(), lang_code.to_string(),
+        "--output".to_string(), output_path.to_str().unwrap().to_string(),
+    ];
+    
+    // 添加大小写保留参数
+    if preserve_case {
+        args.push("--preserve-case".to_string());
+    } else {
+        args.push("--no-preserve-case".to_string());
+    }
+    
     // 执行 Python 脚本（使用 piped stderr 来读取进度）
     let mut child = Command::new(&python_path)
-        .args([
-            script_path.to_str().unwrap(),
-            &srt_path,
-            &audio_path,
-            "--language", lang_code,
-            "--output", output_path.to_str().unwrap(),
-        ])
+        .args(&args)
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("执行校正脚本失败: {}", e))?;
@@ -660,6 +719,38 @@ def load_model():
         print("Model loaded!", file=sys.stderr)
     return MODEL
 
+def preserve_original_case(original, corrected):
+    """保留原始文本中英文字母的大小写"""
+    if not original or not corrected:
+        return corrected
+    
+    # 提取原始文本中的英文字母
+    orig_letters = [(i, c) for i, c in enumerate(original) if c.isalpha() and c.isascii()]
+    
+    # 提取校正文本中的英文字母位置
+    corr_letter_positions = [i for i, c in enumerate(corrected) if c.isalpha() and c.isascii()]
+    
+    # 如果字母数量不同，无法简单映射，返回原始校正结果
+    if len(orig_letters) != len(corr_letter_positions):
+        return corrected
+    
+    # 检查字母序列是否相同（忽略大小写）
+    orig_seq = ''.join(c.lower() for _, c in orig_letters)
+    corr_seq = ''.join(corrected[i].lower() for i in corr_letter_positions)
+    
+    if orig_seq != corr_seq:
+        return corrected
+    
+    # 恢复原始大小写
+    result = list(corrected)
+    for (_, orig_char), corr_pos in zip(orig_letters, corr_letter_positions):
+        if orig_char.isupper():
+            result[corr_pos] = result[corr_pos].upper()
+        else:
+            result[corr_pos] = result[corr_pos].lower()
+    
+    return ''.join(result)
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass  # 禁用日志
@@ -677,6 +768,7 @@ class Handler(BaseHTTPRequestHandler):
             end_ms = params['end_ms']
             original_text = params['original_text']
             language = params.get('language', 'zh')
+            preserve_case = params.get('preserve_case', True)
             
             # 切分音频
             audio = AudioSegment.from_file(audio_path)
@@ -692,6 +784,10 @@ class Handler(BaseHTTPRequestHandler):
             model = load_model()
             result = model.transcribe(["utt"], [tmp_file.name], {"language": language})
             corrected = result[0].get("text", "").strip() if result else ""
+            
+            # 如果启用了保留大小写，恢复原始英文大小写
+            if preserve_case and corrected:
+                corrected = preserve_original_case(original_text, corrected)
             
             os.remove(tmp_file.name)
             
@@ -765,14 +861,33 @@ pub fn is_service_running() -> bool {
         .unwrap_or(false)
 }
 
+/// 停止 FireRedASR 服务
+fn stop_service() {
+    // 尝试通过 pkill 停止服务
+    let _ = std::process::Command::new("pkill")
+        .args(["-f", "firered_service.py"])
+        .output();
+    
+    // 等待服务停止
+    for _ in 0..10 {
+        if !is_service_running() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
+}
+
 /// 启动服务
 fn start_service() -> Result<(), String> {
+    // 总是先写入最新的脚本
+    let script_path = write_service_script()?;
+    
+    // 如果服务已经在运行，先停止它以使用新脚本
     if is_service_running() {
-        return Ok(());
+        stop_service();
     }
     
     let python_path = get_python_path()?;
-    let script_path = write_service_script()?;
     
     // 后台启动服务
     std::process::Command::new(&python_path)
@@ -827,6 +942,7 @@ pub async fn correct_single_entry(
     end_ms: u32,
     original_text: String,
     language: String,
+    preserve_case: bool,
 ) -> Result<SingleCorrectionResult, String> {
     // 检查环境
     let env_status = check_firered_env();
@@ -853,7 +969,8 @@ pub async fn correct_single_entry(
         "start_ms": start_ms,
         "end_ms": end_ms,
         "original_text": original_text,
-        "language": lang_code
+        "language": lang_code,
+        "preserve_case": preserve_case
     });
     
     // 发送请求到服务

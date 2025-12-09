@@ -36,6 +36,9 @@ export const useConfigStore = defineStore('config', () => {
   const whisperModel = ref<string>('base')
   const whisperLanguage = ref<string>('zh')
 
+  // FireRedASR 校正设置
+  const fireredPreserveCase = ref<boolean>(true) // 保留原始英文大小写
+
   // 重置标点符号为默认值
   const resetPunctuation = () => {
     punctuationToRemove.value = DEFAULT_PUNCTUATION
@@ -61,6 +64,7 @@ export const useConfigStore = defineStore('config', () => {
       engine: transcriptionEngine.value,
       model: whisperModel.value,
       language: whisperLanguage.value,
+      fireredPreserveCase: fireredPreserveCase.value,
     }))
   }
 
@@ -73,6 +77,7 @@ export const useConfigStore = defineStore('config', () => {
         if (parsed.engine) transcriptionEngine.value = parsed.engine
         if (parsed.model) whisperModel.value = parsed.model
         if (parsed.language) whisperLanguage.value = parsed.language
+        if (typeof parsed.fireredPreserveCase === 'boolean') fireredPreserveCase.value = parsed.fireredPreserveCase
       } catch (e) {
         // ignore
       }
@@ -220,6 +225,7 @@ export const useConfigStore = defineStore('config', () => {
     transcriptionEngine,
     whisperModel,
     whisperLanguage,
+    fireredPreserveCase,
     updateConfig,
     saveConfig,
     loadConfig,

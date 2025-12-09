@@ -674,6 +674,20 @@ const shortcutCategories = computed(() => {
                         <el-button size="small" type="danger" plain @click="uninstallFirered">卸载</el-button>
                       </div>
                     </div>
+                    
+                    <!-- FireRedASR 校正选项 -->
+                    <div class="firered-options">
+                      <div class="option-item">
+                        <div class="option-info">
+                          <span class="option-label">保留原始英文大小写</span>
+                          <span class="option-desc">校正时保留原字幕中英文字母的大小写格式</span>
+                        </div>
+                        <el-switch 
+                          v-model="configStore.fireredPreserveCase" 
+                          @change="configStore.saveWhisperSettings()"
+                        />
+                      </div>
+                    </div>
                   </template>
                 </div>
               </div>
@@ -1502,6 +1516,37 @@ const shortcutCategories = computed(() => {
   font-size: 12px;
   color: #666;
   min-width: 36px;
+}
+
+/* FireRedASR 选项 */
+.firered-options {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: #f9f9f9;
+  border-radius: 8px;
+}
+
+.firered-options .option-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.firered-options .option-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.firered-options .option-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+.firered-options .option-desc {
+  font-size: 12px;
+  color: #909399;
 }
 
 .whisper-tips {
