@@ -6,6 +6,10 @@ import type { SubtitleEntry, TimeStamp } from '@/types/subtitle'
 const props = defineProps<{
   entry: SubtitleEntry | null
   formatTimeStamp: (ts: TimeStamp) => string
+  fireredReady?: boolean
+  isCorrecting?: boolean
+  correctionResult?: { original: string; corrected: string; has_diff: boolean } | null
+  needsCorrectionCount?: number
 }>()
 
 const emit = defineEmits<{
@@ -19,6 +23,12 @@ const emit = defineEmits<{
   (e: 'text-focus'): void
   (e: 'text-blur'): void
   (e: 'text-input'): void
+  (e: 'correct-entry'): void
+  (e: 'apply-correction'): void
+  (e: 'dismiss-correction'): void
+  (e: 'toggle-correction-mark'): void
+  (e: 'apply-suggestion'): void
+  (e: 'dismiss-suggestion'): void
 }>()
 
 const editingText = ref('')
@@ -81,6 +91,82 @@ const focusTextarea = async () => {
   }
 }
 
+// 计算文本差异，返回带标记的 HTML
+const computeDiff = (original: string, corrected: string) => {
+  // 简单的字符级别差异对比
+  const result = {
+    originalHtml: '',
+    correctedHtml: ''
+  }
+  
+  // 找出两个字符串的最长公共子序列
+  const lcs = (a: string, b: string): string => {
+    const m = a.length, n = b.length
+    const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0))
+    
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        if (a[i - 1] === b[j - 1]) {
+          dp[i][j] = dp[i - 1][j - 1] + 1
+        } else {
+          dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1])
+        }
+      }
+    }
+    
+    // 回溯找出 LCS
+    let i = m, j = n
+    let result = ''
+    while (i > 0 && j > 0) {
+      if (a[i - 1] === b[j - 1]) {
+        result = a[i - 1] + result
+        i--; j--
+      } else if (dp[i - 1][j] > dp[i][j - 1]) {
+        i--
+      } else {
+        j--
+      }
+    }
+    return result
+  }
+  
+  const common = lcs(original, corrected)
+  
+  // 标记原文中被删除的字符
+  let commonIdx = 0
+  let origHtml = ''
+  for (const char of original) {
+    if (commonIdx < common.length && char === common[commonIdx]) {
+      origHtml += char
+      commonIdx++
+    } else {
+      origHtml += `<span class="diff-del">${char}</span>`
+    }
+  }
+  
+  // 标记校正文本中新增的字符
+  commonIdx = 0
+  let corrHtml = ''
+  for (const char of corrected) {
+    if (commonIdx < common.length && char === common[commonIdx]) {
+      corrHtml += char
+      commonIdx++
+    } else {
+      corrHtml += `<span class="diff-add">${char}</span>`
+    }
+  }
+  
+  result.originalHtml = origHtml
+  result.correctedHtml = corrHtml
+  return result
+}
+
+// 计算差异结果
+const diffResult = computed(() => {
+  if (!props.correctionResult) return null
+  return computeDiff(props.correctionResult.original, props.correctionResult.corrected)
+})
+
 // 暴露给父组件
 defineExpose({
   focusTextarea,
@@ -96,6 +182,20 @@ defineExpose({
       <div class="edit-header-left">
         <span class="edit-badge">#{{ entry.id }}</span>
         <h3 class="edit-title">编辑字幕</h3>
+        <!-- 需要校正标记 -->
+        <button 
+          class="correction-mark-btn"
+          :class="{ marked: entry.needsCorrection }"
+          @click="emit('toggle-correction-mark')"
+          :title="entry.needsCorrection ? '取消校正标记' : '标记为需要校正'"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <span>{{ entry.needsCorrection ? '已标记' : '标记校正' }}</span>
+        </button>
       </div>
       <button class="delete-entry-btn" @click="emit('delete-entry')" title="删除此字幕">
         <el-icon><Delete /></el-icon>
@@ -172,6 +272,70 @@ defineExpose({
       </div>
     </div>
 
+    <!-- 批量校正建议（存储在 entry 中的） -->
+    <div v-if="entry?.correctionSuggestion" class="correction-result suggestion-result">
+      <div class="correction-header">
+        <div class="correction-header-left">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+          <span>AI 校正建议（待确认）</span>
+        </div>
+      </div>
+      <div class="correction-compare">
+        <div class="correction-item original">
+          <span class="correction-label">原</span>
+          <span class="correction-text" v-html="computeDiff(entry.text, entry.correctionSuggestion).originalHtml"></span>
+        </div>
+        <div class="correction-item corrected">
+          <span class="correction-label">新</span>
+          <span class="correction-text" v-html="computeDiff(entry.text, entry.correctionSuggestion).correctedHtml"></span>
+        </div>
+      </div>
+      <div class="correction-actions">
+        <button class="correction-btn dismiss" @click="emit('dismiss-suggestion')">忽略</button>
+        <button class="correction-btn apply" @click="emit('apply-suggestion')">采用</button>
+      </div>
+    </div>
+
+    <!-- 单条校正结果对比（内联显示） -->
+    <div v-else-if="correctionResult && correctionResult.has_diff" class="correction-result">
+      <div class="correction-header">
+        <div class="correction-header-left">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+          <span>校正建议</span>
+        </div>
+      </div>
+      <div class="correction-compare">
+        <div class="correction-item original">
+          <span class="correction-label">原</span>
+          <span class="correction-text" v-html="diffResult?.originalHtml"></span>
+        </div>
+        <div class="correction-item corrected">
+          <span class="correction-label">新</span>
+          <span class="correction-text" v-html="diffResult?.correctedHtml"></span>
+        </div>
+      </div>
+      <div class="correction-actions">
+        <button class="correction-btn dismiss" @click="emit('dismiss-correction')">忽略</button>
+        <button class="correction-btn apply" @click="emit('apply-correction')">采用</button>
+      </div>
+    </div>
+
+    <!-- 校正结果无差异提示 -->
+    <div v-else-if="correctionResult && !correctionResult.has_diff" class="correction-no-diff">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+        <polyline points="22 4 12 14.01 9 11.01"/>
+      </svg>
+      <span>识别结果与原文一致</span>
+      <button class="dismiss-btn" @click="emit('dismiss-correction')">×</button>
+    </div>
+
     <!-- 快捷操作 -->
     <div class="quick-actions">
       <span class="actions-label">快捷操作</span>
@@ -197,6 +361,20 @@ defineExpose({
             <line x1="9" y1="9" x2="15" y2="15"/>
           </svg>
           <span>删除标点</span>
+        </button>
+        <button 
+          class="quick-action-btn correct-btn" 
+          :class="{ loading: isCorrecting }"
+          :disabled="!fireredReady || isCorrecting"
+          @click="emit('correct-entry')" 
+          :title="fireredReady ? '使用 FireRedASR 校正此条字幕' : '请先在设置中安装 FireRedASR'"
+        >
+          <svg v-if="!isCorrecting" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+          <span v-if="isCorrecting" class="loading-spinner"></span>
+          <span>{{ isCorrecting ? '校正中...' : 'AI校正' }}</span>
         </button>
       </div>
     </div>
@@ -274,6 +452,43 @@ defineExpose({
   margin: 0;
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* 校正标记按钮 */
+.correction-mark-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #64748b;
+}
+
+.correction-mark-btn:hover {
+  background: #fef3c7;
+  border-color: #fcd34d;
+  color: #d97706;
+}
+
+.correction-mark-btn.marked {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  border-color: #f59e0b;
+  color: #d97706;
+}
+
+.correction-mark-btn.marked svg {
+  fill: #f59e0b;
+  stroke: #d97706;
+}
+
+.correction-mark-btn svg {
+  flex-shrink: 0;
 }
 
 .delete-entry-btn {
@@ -566,6 +781,216 @@ defineExpose({
 
 .quick-action-btn svg {
   flex-shrink: 0;
+}
+
+.quick-action-btn.correct-btn {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-color: #93c5fd;
+  color: #2563eb;
+}
+
+.quick-action-btn.correct-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  border-color: #60a5fa;
+}
+
+.quick-action-btn.correct-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.quick-action-btn.correct-btn.loading {
+  pointer-events: none;
+}
+
+.loading-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #93c5fd;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 校正结果样式 - 简洁现代风格 */
+.correction-result {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.correction-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.625rem 1rem;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.correction-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.correction-header svg {
+  color: #3b82f6;
+}
+
+.correction-compare {
+  display: flex;
+  flex-direction: column;
+}
+
+.correction-item {
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  gap: 1rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.correction-item:last-child {
+  border-bottom: none;
+}
+
+.correction-item.original {
+  background: #fafafa;
+}
+
+.correction-item.corrected {
+  background: #f0fdf4;
+}
+
+.correction-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  min-width: 36px;
+  text-align: center;
+}
+
+.correction-item.original .correction-label {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.correction-item.corrected .correction-label {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.correction-text {
+  flex: 1;
+  font-size: 0.875rem;
+  color: #1e293b;
+  line-height: 1.5;
+}
+
+/* 差异高亮 */
+.correction-text :deep(.diff-del) {
+  background: #fecaca;
+  color: #dc2626;
+  text-decoration: line-through;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+.correction-text :deep(.diff-add) {
+  background: #bbf7d0;
+  color: #16a34a;
+  font-weight: 500;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+.correction-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+}
+
+.correction-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.correction-btn.dismiss {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+}
+
+.correction-btn.dismiss:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.correction-btn.apply {
+  background: #3b82f6;
+  border: 1px solid #2563eb;
+  color: #fff;
+}
+
+.correction-btn.apply:hover {
+  background: #2563eb;
+}
+
+/* 无差异提示 */
+.correction-no-diff {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  color: #16a34a;
+}
+
+.correction-no-diff svg {
+  flex-shrink: 0;
+  color: #22c55e;
+}
+
+.correction-no-diff .dismiss-btn {
+  margin-left: auto;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 1rem;
+}
+
+.correction-no-diff .dismiss-btn:hover {
+  background: #f1f5f9;
+  color: #64748b;
 }
 
 /* 无选中状态 */

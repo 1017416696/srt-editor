@@ -106,7 +106,7 @@ fn check_uv_installed() -> bool {
         .unwrap_or(false)
 }
 
-/// 检查 SenseVoice 环境状态
+/// 检查 SenseVoice 环境状态（快速检查，不启动 Python）
 pub fn check_sensevoice_env() -> SenseVoiceEnvStatus {
     let uv_installed = check_uv_installed();
     let env_dir = get_sensevoice_env_dir().unwrap_or_default();
@@ -114,13 +114,29 @@ pub fn check_sensevoice_env() -> SenseVoiceEnvStatus {
     
     let env_exists = env_dir.exists() && python_path.exists();
     
-    // 检查是否安装了 funasr
+    // 快速检查：只检查 site-packages 中是否存在 funasr 目录
+    // 这比启动 Python 导入模块快得多
     let ready = if env_exists {
-        Command::new(&python_path)
-            .args(["-c", "import funasr; print('ok')"])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
+        let site_packages = env_dir.join("lib");
+        if site_packages.exists() {
+            std::fs::read_dir(&site_packages)
+                .ok()
+                .and_then(|entries| {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() && path.file_name().map(|n| n.to_string_lossy().starts_with("python")).unwrap_or(false) {
+                            let sp = path.join("site-packages").join("funasr");
+                            if sp.exists() {
+                                return Some(true);
+                            }
+                        }
+                    }
+                    None
+                })
+                .unwrap_or(false)
+        } else {
+            false
+        }
     } else {
         false
     };

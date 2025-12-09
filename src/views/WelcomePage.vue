@@ -179,7 +179,7 @@ const processFiles = async ({ srtPath, audioPath }: { srtPath?: string; audioPat
       const fileExtension = audioPath.split('.').pop()?.toLowerCase() || 'mp3'
       await audioStore.loadAudio({ name: fileName, path: audioPath, duration: 0, format: fileExtension })
     }
-    if (srtLoaded) { loadingMessage.value = '即将进入编辑器...'; setTimeout(() => router.push('/editor'), 500) }
+    if (srtLoaded) { router.push('/editor') }
   } catch (error) {
     await ElMessageBox.alert(`加载失败：${error instanceof Error ? error.message : '未知错误'}`, '错误', { confirmButtonText: '确定', type: 'error' })
   } finally { if (!srtLoaded) { isLoading.value = false; loadingMessage.value = '' } }
@@ -204,7 +204,7 @@ const openRecentFile = async (filePath: string) => {
     await subtitleStore.loadSRTFile(srtFile)
     configStore.addRecentFile(filePath)
     if ((window as any).__updateRecentFilesMenu) await (window as any).__updateRecentFilesMenu()
-    setTimeout(() => router.push('/editor'), 300)
+    router.push('/editor')
   } catch (error) {
     isLoading.value = false; loadingMessage.value = ''
     await ElMessageBox.alert(`加载文件失败：${error instanceof Error ? error.message : '文件可能已被移动或删除'}`, '加载失败', { confirmButtonText: '确定', type: 'error' })

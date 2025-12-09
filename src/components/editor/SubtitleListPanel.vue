@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
-import { DocumentCopy, VideoPlay, Delete } from '@element-plus/icons-vue'
+import { DocumentCopy, VideoPlay, Delete, WarningFilled } from '@element-plus/icons-vue'
 import SearchReplaceBar from './SearchReplaceBar.vue'
 import type { SubtitleEntry } from '@/types/subtitle'
 
@@ -15,6 +15,7 @@ const props = defineProps<{
   hasAudio: boolean
   currentFilePath: string | null
   formatTimeStamp: (ts: any) => string
+  showOnlyNeedsCorrection?: boolean // 只显示需要校正的字幕
 }>()
 
 const emit = defineEmits<{
@@ -30,6 +31,7 @@ const emit = defineEmits<{
   (e: 'replace-all'): void
   (e: 'close-search'): void
   (e: 'go-back'): void
+  (e: 'toggle-correction-mark', id: number): void
 }>()
 
 const subtitleListContainer = ref<HTMLElement | null>(null)
@@ -44,14 +46,26 @@ const VIRTUAL_OVERSCAN = 5
 const scrollTop = ref(0)
 const containerHeight = ref(400)
 
-// 计算显示的字幕列表（根据搜索结果过滤）
+// 计算显示的字幕列表（根据搜索结果和校正筛选过滤）
 const filteredEntries = computed(() => {
-  if (!props.searchText) {
-    return props.entries
+  let result = props.entries
+  
+  // 搜索过滤
+  if (props.searchText) {
+    result = result.filter((entry) => props.searchResults.includes(entry.id))
   }
-  return props.entries.filter((entry) =>
-    props.searchResults.includes(entry.id)
-  )
+  
+  // 只显示需要校正的字幕
+  if (props.showOnlyNeedsCorrection) {
+    result = result.filter((entry) => entry.needsCorrection)
+  }
+  
+  return result
+})
+
+// 需要校正的字幕数量
+const needsCorrectionCount = computed(() => {
+  return props.entries.filter(e => e.needsCorrection).length
 })
 
 // 计算可见范围
@@ -183,7 +197,8 @@ defineExpose({
   blurSearch: () => searchReplaceRef.value?.blur(),
   getSearchInput: () => searchReplaceRef.value?.getSearchInput(),
   getReplaceInput: () => searchReplaceRef.value?.getReplaceInput(),
-  getFilteredEntries: () => filteredEntries.value
+  getFilteredEntries: () => filteredEntries.value,
+  getNeedsCorrectionCount: () => needsCorrectionCount.value
 })
 </script>
 
@@ -221,7 +236,15 @@ defineExpose({
           @dblclick="emit('double-click-entry', entry.id)"
         >
           <div class="item-header">
-            <span class="item-number">{{ entry.id }}</span>
+            <div class="item-header-left">
+              <span class="item-number">{{ entry.id }}</span>
+              <!-- 需要校正标记 -->
+              <el-tooltip v-if="entry.needsCorrection" content="需要二次校正" placement="top">
+                <span class="correction-mark" @click.stop="emit('toggle-correction-mark', entry.id)">
+                  <WarningFilled />
+                </span>
+              </el-tooltip>
+            </div>
             <span class="item-time">
               {{ formatTimeStamp(entry.startTime).slice(0, 8) }}
               -
@@ -369,6 +392,28 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   margin-bottom: 0.5rem;
+}
+
+.item-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+/* 需要校正标记 */
+.correction-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #f59e0b;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.correction-mark:hover {
+  color: #d97706;
+  transform: scale(1.1);
 }
 
 .item-number {

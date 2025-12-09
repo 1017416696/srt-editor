@@ -1049,6 +1049,35 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     }
   }
 
+  // 另存为文件
+  const saveAsFile = async (newFilePath: string) => {
+    if (!tabManager.activeTab) {
+      throw new Error('No active tab')
+    }
+
+    const { invoke } = await import('@tauri-apps/api/core')
+
+    try {
+      await invoke('write_srt', {
+        filePath: newFilePath,
+        entries: entries.value,
+      })
+
+      // 更新当前 tab 的文件路径
+      tabManager.activeTab.subtitle.filePath = newFilePath
+      tabManager.activeTab.subtitle.savedHistoryIndex = tabManager.activeTab.subtitle.historyIndex
+      
+      // 更新 tab 标题
+      const fileName = newFilePath.split('/').pop() || newFilePath.split('\\').pop() || 'Untitled'
+      tabManager.activeTab.title = fileName
+
+      logger.info('文件另存为成功', { path: newFilePath, entries: entries.value.length })
+    } catch (error) {
+      logger.error('文件另存为失败', { path: newFilePath, error: String(error) })
+      throw error
+    }
+  }
+
   // 跳转搜索结果
   const nextSearchResult = () => {
     if (!tabManager.activeTab) return
@@ -1071,6 +1100,97 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     currentEntryId.value = tab.subtitle.searchResults[tab.subtitle.currentSearchIndex] ?? null
   }
 
+  // ============ 二次校正标记相关 ============
+  
+  // 切换单条字幕的校正标记
+  const toggleCorrectionMark = (entryId: number) => {
+    const entry = entries.value.find((e) => e.id === entryId)
+    if (entry) {
+      entry.needsCorrection = !entry.needsCorrection
+      logger.info('切换校正标记', { entryId, needsCorrection: entry.needsCorrection })
+    }
+  }
+
+  // 设置单条字幕的校正标记
+  const setCorrectionMark = (entryId: number, needsCorrection: boolean) => {
+    const entry = entries.value.find((e) => e.id === entryId)
+    if (entry) {
+      entry.needsCorrection = needsCorrection
+    }
+  }
+
+  // 批量设置校正标记
+  const setCorrectionMarks = (entryIds: number[], needsCorrection: boolean) => {
+    entryIds.forEach(id => {
+      const entry = entries.value.find((e) => e.id === id)
+      if (entry) {
+        entry.needsCorrection = needsCorrection
+      }
+    })
+    logger.info('批量设置校正标记', { count: entryIds.length, needsCorrection })
+  }
+
+  // 清除所有校正标记
+  const clearAllCorrectionMarks = () => {
+    entries.value.forEach(entry => {
+      entry.needsCorrection = false
+      entry.correctionSuggestion = undefined
+    })
+    logger.info('清除所有校正标记')
+  }
+
+  // 获取需要校正的字幕列表
+  const getEntriesNeedingCorrection = () => {
+    return entries.value.filter(e => e.needsCorrection)
+  }
+
+  // 设置校正建议（同时标记为需要校正）
+  const setCorrectionSuggestion = (entryId: number, suggestion: string) => {
+    const entry = entries.value.find((e) => e.id === entryId)
+    if (entry) {
+      entry.correctionSuggestion = suggestion
+      entry.needsCorrection = true
+      logger.info('设置校正建议', { entryId, suggestion: suggestion.substring(0, 30) })
+    }
+  }
+
+  // 应用校正建议
+  const applyCorrectionSuggestion = (entryId: number) => {
+    const entry = entries.value.find((e) => e.id === entryId)
+    if (entry && entry.correctionSuggestion) {
+      const oldText = entry.text
+      entry.text = entry.correctionSuggestion
+      entry.correctionSuggestion = undefined
+      entry.needsCorrection = false
+      
+      // 记录历史
+      addHistory({
+        type: HistoryActionType.TEXT_EDIT,
+        timestamp: Date.now(),
+        entryId,
+        before: { text: oldText },
+        after: { text: entry.text },
+      })
+      
+      logger.info('应用校正建议', { entryId })
+    }
+  }
+
+  // 忽略校正建议
+  const dismissCorrectionSuggestion = (entryId: number) => {
+    const entry = entries.value.find((e) => e.id === entryId)
+    if (entry) {
+      entry.correctionSuggestion = undefined
+      entry.needsCorrection = false
+      logger.info('忽略校正建议', { entryId })
+    }
+  }
+
+  // 需要校正的字幕数量
+  const needsCorrectionCount = computed(() => {
+    return entries.value.filter(e => e.needsCorrection).length
+  })
+
   return {
     // 状态
     entries,
@@ -1089,6 +1209,7 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     canUndo,
     canRedo,
     currentFilePath,
+    needsCorrectionCount,
 
     // 方法
     loadSRTFile,
@@ -1116,5 +1237,15 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     prevSearchResult,
     formatTimeStamp,
     saveToFile,
+    saveAsFile,
+    // 校正标记相关
+    toggleCorrectionMark,
+    setCorrectionMark,
+    setCorrectionMarks,
+    clearAllCorrectionMarks,
+    getEntriesNeedingCorrection,
+    setCorrectionSuggestion,
+    applyCorrectionSuggestion,
+    dismissCorrectionSuggestion,
   }
 })

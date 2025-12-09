@@ -2,6 +2,7 @@ mod srt_parser;
 mod waveform_generator;
 mod whisper_transcriber;
 mod sensevoice_transcriber;
+mod firered_corrector;
 
 use srt_parser::{read_srt_file, write_srt_file, SRTFile, SubtitleEntry};
 use whisper_transcriber::{
@@ -10,6 +11,11 @@ use whisper_transcriber::{
 use sensevoice_transcriber::{
     check_sensevoice_env, install_sensevoice_env, transcribe_with_sensevoice, 
     uninstall_sensevoice_env, cancel_sensevoice_transcription, SenseVoiceEnvStatus,
+};
+use firered_corrector::{
+    check_firered_env, install_firered_env, correct_with_firered, correct_single_entry,
+    uninstall_firered_env, cancel_firered_correction, preload_firered_service, is_service_running,
+    FireRedEnvStatus, CorrectionEntry, SingleCorrectionResult,
 };
 use waveform_generator::{generate_waveform_with_progress, ProgressCallback};
 use std::fs;
@@ -204,6 +210,67 @@ fn cancel_sensevoice_task() {
     cancel_sensevoice_transcription();
 }
 
+// ============ FireRedASR 校正相关命令 ============
+
+/// 检查 FireRedASR 环境状态
+#[tauri::command]
+fn check_firered_env_status() -> FireRedEnvStatus {
+    check_firered_env()
+}
+
+/// 安装 FireRedASR 环境
+#[tauri::command]
+async fn install_firered(window: tauri::Window) -> Result<String, String> {
+    install_firered_env(window).await
+}
+
+/// 使用 FireRedASR 校正字幕
+#[tauri::command]
+async fn correct_subtitles_with_firered(
+    window: tauri::Window,
+    srt_path: String,
+    audio_path: String,
+    language: String,
+) -> Result<Vec<CorrectionEntry>, String> {
+    correct_with_firered(srt_path, audio_path, language, window).await
+}
+
+/// 卸载 FireRedASR 环境
+#[tauri::command]
+fn uninstall_firered() -> Result<String, String> {
+    uninstall_firered_env()
+}
+
+/// 取消 FireRedASR 校正
+#[tauri::command]
+fn cancel_firered_task() {
+    cancel_firered_correction();
+}
+
+/// 预加载 FireRedASR 服务（启动服务并加载模型）
+#[tauri::command]
+async fn preload_firered() -> Result<String, String> {
+    preload_firered_service().await
+}
+
+/// 检查 FireRedASR 服务是否运行
+#[tauri::command]
+fn is_firered_service_running() -> bool {
+    is_service_running()
+}
+
+/// 校正单条字幕
+#[tauri::command]
+async fn correct_single_subtitle(
+    audio_path: String,
+    start_ms: u32,
+    end_ms: u32,
+    original_text: String,
+    language: String,
+) -> Result<SingleCorrectionResult, String> {
+    correct_single_entry(audio_path, start_ms, end_ms, original_text, language).await
+}
+
 /// 打开模型目录
 #[tauri::command]
 fn open_whisper_model_dir() -> Result<(), String> {
@@ -304,6 +371,8 @@ fn update_recent_files_menu(app_handle: tauri::AppHandle, files: Vec<RecentFileI
                 .item(&PredefinedMenuItem::paste(&app_handle, Some("粘贴")).map_err(|e| e.to_string())?)
                 .item(&PredefinedMenuItem::select_all(&app_handle, Some("全选")).map_err(|e| e.to_string())?)
                 .separator()
+                .text("batch-ai-correction", "批量 AI 字幕校正")
+                .separator()
                 .text("batch-add-cjk-spaces", "批量添加中英文空格")
                 .text("batch-remove-html", "批量移除HTML标签")
                 .text("batch-remove-punctuation", "批量删除标点符号")
@@ -346,6 +415,8 @@ fn update_recent_files_menu(app_handle: tauri::AppHandle, files: Vec<RecentFileI
                 .item(&PredefinedMenuItem::copy(&app_handle, Some("复制")).map_err(|e| e.to_string())?)
                 .item(&PredefinedMenuItem::paste(&app_handle, Some("粘贴")).map_err(|e| e.to_string())?)
                 .item(&PredefinedMenuItem::select_all(&app_handle, Some("全选")).map_err(|e| e.to_string())?)
+                .separator()
+                .text("batch-ai-correction", "批量 AI 字幕校正")
                 .separator()
                 .text("batch-add-cjk-spaces", "批量添加中英文空格")
                 .text("batch-remove-html", "批量移除HTML标签")
@@ -442,6 +513,8 @@ pub fn run() {
                     .item(&PredefinedMenuItem::paste(app, Some("粘贴"))?)
                     .item(&PredefinedMenuItem::select_all(app, Some("全选"))?)
                     .separator()
+                    .text("batch-ai-correction", "批量 AI 字幕校正")
+                    .separator()
                     .text("batch-add-cjk-spaces", "批量添加中英文空格")
                     .text("batch-remove-html", "批量移除HTML标签")
                     .text("batch-remove-punctuation", "批量删除标点符号")
@@ -490,6 +563,8 @@ pub fn run() {
                     .item(&PredefinedMenuItem::copy(app, Some("复制"))?)
                     .item(&PredefinedMenuItem::paste(app, Some("粘贴"))?)
                     .item(&PredefinedMenuItem::select_all(app, Some("全选"))?)
+                    .separator()
+                    .text("batch-ai-correction", "批量 AI 字幕校正")
                     .separator()
                     .text("batch-add-cjk-spaces", "批量添加中英文空格")
                     .text("batch-remove-html", "批量移除HTML标签")
@@ -549,6 +624,18 @@ pub fn run() {
                     "close-window" => {
                         if let Some(window) = app_handle.get_webview_window("main") {
                             let _ = window.close();
+                        }
+                    }
+                    "batch-ai-correction" => {
+                        if let Some(window) = app_handle.get_webview_window("main") {
+                            let js_code = r#"
+                                (async () => {
+                                    if (window.__globalBatchAICorrection && typeof window.__globalBatchAICorrection === 'function') {
+                                        await window.__globalBatchAICorrection();
+                                    }
+                                })();
+                            "#;
+                            let _ = window.eval(js_code);
                         }
                     }
                     "batch-add-cjk-spaces" => {
@@ -684,7 +771,16 @@ pub fn run() {
             install_sensevoice,
             transcribe_with_sensevoice_model,
             uninstall_sensevoice,
-            cancel_sensevoice_task
+            cancel_sensevoice_task,
+            // FireRedASR 校正相关
+            check_firered_env_status,
+            install_firered,
+            correct_subtitles_with_firered,
+            correct_single_subtitle,
+            preload_firered,
+            is_firered_service_running,
+            uninstall_firered,
+            cancel_firered_task
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -23,6 +23,8 @@ export interface SubtitleEntry {
   isEditing?: boolean // 是否正在编辑
   hasConflict?: boolean // 是否存在时间冲突
   trackNumber?: number // 轨道号 (0=默认轨道, 1=冲突轨道)
+  needsCorrection?: boolean // 是否需要二次校正（有 AI 校正建议待确认）
+  correctionSuggestion?: string // AI 校正建议文本
 }
 
 /**

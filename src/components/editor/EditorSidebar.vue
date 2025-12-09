@@ -9,6 +9,9 @@ const props = defineProps<{
   isAltPressed: boolean
   showSearchPanel: boolean
   canMerge: boolean
+  hasSubtitles: boolean
+  showOnlyNeedsCorrection: boolean
+  needsCorrectionCount: number
 }>()
 
 const emit = defineEmits<{
@@ -19,6 +22,7 @@ const emit = defineEmits<{
   (e: 'align-to-waveform'): void
   (e: 'toggle-snap'): void
   (e: 'open-settings'): void
+  (e: 'toggle-correction-filter'): void
 }>()
 </script>
 
@@ -79,6 +83,21 @@ const emit = defineEmits<{
         :title="isSnapEnabled && isAltPressed ? '吸附已暂停 (松开Alt恢复)' : '拖拽吸附 (S) 按住Alt临时禁用'"
       >
         <el-icon><Magnet /></el-icon>
+      </button>
+      <!-- 筛选需要校正的字幕 -->
+      <button
+        class="sidebar-btn"
+        :class="{ active: showOnlyNeedsCorrection, 'has-badge': needsCorrectionCount > 0 }"
+        @click="emit('toggle-correction-filter')"
+        :disabled="needsCorrectionCount === 0"
+        :title="showOnlyNeedsCorrection ? '显示全部字幕' : `筛选需要校正的字幕 (${needsCorrectionCount})`"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+          <path d="M2 17l10 5 10-5"/>
+          <path d="M2 12l10 5 10-5"/>
+        </svg>
+        <span v-if="needsCorrectionCount > 0" class="badge">{{ needsCorrectionCount > 99 ? '99+' : needsCorrectionCount }}</span>
       </button>
     </div>
     <div class="sidebar-bottom">
@@ -202,5 +221,30 @@ const emit = defineEmits<{
 
 .sidebar-btn:disabled svg {
   color: #94a3b8;
+}
+
+/* 徽章样式 */
+.sidebar-btn.has-badge {
+  position: relative;
+}
+
+.sidebar-btn .badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+  color: #fff;
+  background: #f59e0b;
+  border-radius: 7px;
+}
+
+.sidebar-btn.active .badge {
+  background: #3b82f6;
 }
 </style>

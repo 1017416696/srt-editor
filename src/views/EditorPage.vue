@@ -11,8 +11,10 @@ import { useTabManagerStore } from '@/stores/tabManager'
 import { timeStampToMs } from '@/utils/time'
 import { findVoiceRegion, timestampToMs, msToTimestamp } from '@/utils/waveformAlign'
 import type { SRTFile, AudioFile, TimeStamp } from '@/types/subtitle'
+import type { CorrectionEntry, CorrectionEntryWithChoice, FireRedEnvStatus } from '@/types/correction'
 import WaveformViewer from '@/components/WaveformViewer.vue'
 import SettingsDialog from '@/components/SettingsDialog.vue'
+import CorrectionCompareDialog from '@/components/CorrectionCompareDialog.vue'
 import TitleBar from '@/components/TitleBar.vue'
 import { EditorSidebar, AudioEmptyState, TimelineControls, SubtitleListPanel, SubtitleEditPanel } from '@/components/editor'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -36,6 +38,14 @@ const isAltPressed = ref(false)
 const selectedSubtitleIds = ref<number[]>([])
 const showSearchPanel = ref(false)
 const showSettingsDialog = ref(false)
+const showCorrectionDialog = ref(false)
+const correctionEntries = ref<CorrectionEntry[]>([])
+const fireredStatus = ref<FireRedEnvStatus>({ uv_installed: false, env_exists: false, ready: false })
+const isCorrecting = ref(false) // 单条校正中
+const isBatchCorrecting = ref(false) // 批量校正中
+const singleCorrectionResult = ref<{ original: string; corrected: string; has_diff: boolean } | null>(null)
+const showOnlyNeedsCorrection = ref(false) // 只显示需要校正的字幕
+const correctionProgress = ref({ progress: 0, currentText: '', status: '' }) // 批量校正进度
 
 let autoSaveTimer: ReturnType<typeof setTimeout> | null = null
 let userSelectionTimer: ReturnType<typeof setTimeout> | null = null
@@ -156,7 +166,14 @@ const handleRemoveAudio = () => {
 
 // 保存文件
 const handleSave = async () => {
-  if (isSaving || !subtitleStore.currentFilePath) return
+  if (isSaving) return
+  
+  // 如果没有文件路径，弹出另存为对话框
+  if (!subtitleStore.currentFilePath) {
+    await handleSaveAs()
+    return
+  }
+  
   isSaving = true
   try {
     await subtitleStore.saveToFile()
@@ -165,10 +182,37 @@ const handleSave = async () => {
   }
 }
 
+// 另存为文件
+const handleSaveAs = async () => {
+  if (isSaving || subtitleStore.entries.length === 0) return
+  
+  try {
+    const { save } = await import('@tauri-apps/plugin-dialog')
+    const filePath = await save({
+      filters: [{ name: 'SRT 字幕文件', extensions: ['srt'] }],
+      defaultPath: 'untitled.srt'
+    })
+    
+    if (filePath) {
+      isSaving = true
+      try {
+        await subtitleStore.saveAsFile(filePath)
+        ElMessage.success('文件保存成功')
+      } finally {
+        setTimeout(() => { isSaving = false }, 100)
+      }
+    }
+  } catch (error) {
+    ElMessage.error(`保存失败：${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
 // 选择字幕
 const selectEntry = (id: number) => {
   selectedEntryId.value = id
   isUserSelectingEntry.value = true
+  // 切换字幕时清除校正结果
+  singleCorrectionResult.value = null
   if (userSelectionTimer) clearTimeout(userSelectionTimer)
   userSelectionTimer = setTimeout(() => {
     isUserSelectingEntry.value = false
@@ -589,6 +633,284 @@ const handleZoomReset = () => {
   waveformViewerRef.value?.fitToWidth()
 }
 
+// FireRedASR 校正相关
+const fetchFireredStatus = async () => {
+  try {
+    fireredStatus.value = await invoke<FireRedEnvStatus>('check_firered_env_status')
+    console.log('FireRedASR status:', fireredStatus.value)
+    
+    // 如果环境已就绪，后台预加载服务（不阻塞 UI）
+    if (fireredStatus.value.ready) {
+      preloadFireredService()
+    }
+  } catch (e) {
+    console.error('Failed to fetch firered status:', e)
+  }
+}
+
+// 预加载 FireRedASR 服务（后台执行，不阻塞）
+const preloadFireredService = async () => {
+  try {
+    // 先检查服务是否已经在运行
+    const isRunning = await invoke<boolean>('is_firered_service_running')
+    if (isRunning) {
+      console.log('FireRedASR service already running')
+      return
+    }
+    
+    console.log('Preloading FireRedASR service...')
+    const result = await invoke<string>('preload_firered')
+    console.log('FireRedASR preload result:', result)
+  } catch (e) {
+    // 预加载失败不影响用户体验，只记录日志
+    console.warn('Failed to preload FireRedASR service:', e)
+  }
+}
+
+const startCorrection = async () => {
+  console.log('startCorrection called', {
+    hasAudio: hasAudio.value,
+    currentFilePath: subtitleStore.currentFilePath,
+    fireredReady: fireredStatus.value.ready,
+    audioPath: audioStore.audioFile?.path
+  })
+  
+  if (!hasAudio.value) {
+    ElMessage.warning('请先加载音频文件')
+    return
+  }
+  
+  if (subtitleStore.entries.length === 0) {
+    ElMessage.warning('没有字幕内容可校正')
+    return
+  }
+  
+  // 如果字幕文件未保存，提示用户先保存
+  if (!subtitleStore.currentFilePath) {
+    ElMessage.warning('请先保存字幕文件（Cmd+S）')
+    return
+  }
+  
+  if (!fireredStatus.value.ready) {
+    ElMessage.warning('请先在设置中安装 FireRedASR 环境')
+    showSettingsDialog.value = true
+    return
+  }
+  
+  if (audioStore.playerState.isPlaying) audioStore.pause()
+  
+  isBatchCorrecting.value = true
+  correctionProgress.value = { progress: 0, currentText: '正在加载模型...', status: 'loading' }
+  
+  // 监听进度事件（确保进度只会前进不会后退）
+  const unlistenProgress = await listen<{ progress: number; current_text: string; status: string }>('firered-progress', (event) => {
+    // 只有当新进度大于当前进度时才更新（防止进度回退）
+    if (event.payload.progress >= correctionProgress.value.progress) {
+      correctionProgress.value = {
+        progress: event.payload.progress,
+        currentText: event.payload.current_text,
+        status: event.payload.status
+      }
+    }
+  })
+  
+  try {
+    console.log('Calling correct_subtitles_with_firered...', {
+      srtPath: subtitleStore.currentFilePath,
+      audioPath: audioStore.audioFile?.path
+    })
+    
+    const result = await invoke<CorrectionEntry[]>('correct_subtitles_with_firered', {
+      srtPath: subtitleStore.currentFilePath,
+      audioPath: audioStore.audioFile?.path,
+      language: 'zh'
+    })
+    
+    console.log('Correction result:', result)
+    
+    if (result && result.length > 0) {
+      // 将校正结果应用到字幕条目中，标记有差异的字幕
+      let diffCount = 0
+      for (const entry of result) {
+        if (entry.has_diff) {
+          subtitleStore.setCorrectionSuggestion(entry.id, entry.corrected)
+          diffCount++
+        }
+      }
+      
+      if (diffCount > 0) {
+        // 自动开启筛选模式，显示需要确认的字幕
+        showOnlyNeedsCorrection.value = true
+        // 选中第一条需要校正的字幕
+        const firstNeedsCorrection = subtitleStore.entries.find(e => e.needsCorrection)
+        if (firstNeedsCorrection) {
+          selectedEntryId.value = firstNeedsCorrection.id
+        }
+        ElMessage.success(`校正完成，发现 ${diffCount} 处差异，请逐条确认`)
+      } else {
+        ElMessage.success('校正完成，未发现差异')
+      }
+    } else {
+      ElMessage.warning('校正完成，但没有返回结果')
+    }
+  } catch (error) {
+    console.error('Correction error:', error)
+    ElMessage.error(`校正失败：${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    unlistenProgress()
+    isBatchCorrecting.value = false
+    correctionProgress.value = { progress: 0, currentText: '', status: '' }
+  }
+}
+
+const handleCorrectionConfirm = async (entries: CorrectionEntryWithChoice[]) => {
+  // 应用用户选择的校正结果
+  let updatedCount = 0
+  
+  for (const entry of entries) {
+    if (entry.has_diff && entry.choice === 'corrected') {
+      const subtitle = subtitleStore.entries.find(e => e.id === entry.id)
+      if (subtitle && subtitle.text !== entry.corrected) {
+        subtitleStore.updateEntryText(entry.id, entry.corrected)
+        updatedCount++
+      }
+    }
+  }
+  
+  if (updatedCount > 0) {
+    if (subtitleStore.currentFilePath) {
+      await subtitleStore.saveToFile()
+    }
+    ElMessage.success(`已应用 ${updatedCount} 处校正`)
+  } else {
+    ElMessage.info('没有应用任何校正')
+  }
+  
+  showCorrectionDialog.value = false
+  correctionEntries.value = []
+}
+
+const handleCorrectionCancel = () => {
+  showCorrectionDialog.value = false
+  correctionEntries.value = []
+}
+
+// 单条字幕校正
+const handleCorrectSingleEntry = async () => {
+  if (!currentEntry.value) {
+    ElMessage.warning('请先选择一条字幕')
+    return
+  }
+  
+  if (!hasAudio.value) {
+    ElMessage.warning('请先加载音频文件')
+    return
+  }
+  
+  if (!fireredStatus.value.ready) {
+    ElMessage.warning('请先在设置中安装 FireRedASR 环境')
+    showSettingsDialog.value = true
+    return
+  }
+  
+  if (audioStore.playerState.isPlaying) audioStore.pause()
+  
+  // 清除之前的校正结果
+  singleCorrectionResult.value = null
+  isCorrecting.value = true
+  
+  try {
+    const entry = currentEntry.value
+    const startMs = timeStampToMs(entry.startTime)
+    const endMs = timeStampToMs(entry.endTime)
+    
+    console.log('Correcting single entry:', { id: entry.id, startMs, endMs, text: entry.text })
+    
+    const result = await invoke<{ original: string; corrected: string; has_diff: boolean }>('correct_single_subtitle', {
+      audioPath: audioStore.audioFile?.path,
+      startMs,
+      endMs,
+      originalText: entry.text,
+      language: 'zh'
+    })
+    
+    console.log('Single correction result:', result)
+    
+    // 显示校正结果（内联）
+    singleCorrectionResult.value = result
+  } catch (error) {
+    console.error('Single correction error:', error)
+    ElMessage.error(`校正失败：${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    isCorrecting.value = false
+  }
+}
+
+// 应用校正结果
+const handleApplyCorrection = async () => {
+  if (!currentEntry.value || !singleCorrectionResult.value) return
+  
+  subtitleStore.updateEntryText(currentEntry.value.id, singleCorrectionResult.value.corrected)
+  if (subtitleStore.currentFilePath) {
+    await subtitleStore.saveToFile()
+  }
+  singleCorrectionResult.value = null
+  ElMessage.success('已应用校正')
+}
+
+// 忽略校正结果
+const handleDismissCorrection = () => {
+  singleCorrectionResult.value = null
+}
+
+// 切换当前字幕的校正标记
+const handleToggleCorrectionMark = () => {
+  if (currentEntry.value) {
+    subtitleStore.toggleCorrectionMark(currentEntry.value.id)
+  }
+}
+
+// 应用批量校正建议
+const handleApplySuggestion = async () => {
+  if (!currentEntry.value) return
+  
+  subtitleStore.applyCorrectionSuggestion(currentEntry.value.id)
+  
+  // 保存文件
+  if (subtitleStore.currentFilePath) {
+    await subtitleStore.saveToFile()
+  }
+  
+  // 自动跳转到下一条需要校正的字幕
+  const nextEntry = subtitleStore.entries.find(e => e.needsCorrection && e.id !== currentEntry.value?.id)
+  if (nextEntry) {
+    selectedEntryId.value = nextEntry.id
+    ElMessage.success(`已采用，还有 ${subtitleStore.needsCorrectionCount} 条待确认`)
+  } else {
+    // 没有更多需要校正的了，关闭筛选
+    showOnlyNeedsCorrection.value = false
+    ElMessage.success('所有校正已处理完成')
+  }
+}
+
+// 忽略批量校正建议
+const handleDismissSuggestion = () => {
+  if (!currentEntry.value) return
+  
+  subtitleStore.dismissCorrectionSuggestion(currentEntry.value.id)
+  
+  // 自动跳转到下一条需要校正的字幕
+  const nextEntry = subtitleStore.entries.find(e => e.needsCorrection && e.id !== currentEntry.value?.id)
+  if (nextEntry) {
+    selectedEntryId.value = nextEntry.id
+    ElMessage.info(`已忽略，还有 ${subtitleStore.needsCorrectionCount} 条待确认`)
+  } else {
+    // 没有更多需要校正的了，关闭筛选
+    showOnlyNeedsCorrection.value = false
+    ElMessage.success('所有校正已处理完成')
+  }
+}
+
 // 返回欢迎页
 const goBack = async () => {
   if (audioStore.currentAudio) audioStore.unloadAudio()
@@ -750,9 +1072,13 @@ onMounted(async () => {
     selectedEntryId.value = subtitleStore.entries[0]?.id ?? null
   }
 
+  // 后台获取 FireRedASR 状态（不阻塞页面加载）
+  fetchFireredStatus()
+
   try {
     ;(window as any).__handleMenuOpenFile = async () => await handleOpenFile()
     ;(window as any).__handleMenuSave = async () => await handleSave()
+    ;(window as any).__globalBatchAICorrection = async () => await startCorrection()
     unlistenOpenFile = await listen<void>('menu:open-file', async () => await handleOpenFile())
     document.removeEventListener('keydown', handleKeydown, true)
     document.addEventListener('keydown', handleKeydown, true)
@@ -767,6 +1093,7 @@ onBeforeUnmount(() => {
   if (unlistenOpenFile) { unlistenOpenFile(); unlistenOpenFile = null }
   ;(window as any).__handleMenuOpenFile = null
   ;(window as any).__handleMenuSave = null
+  ;(window as any).__globalBatchAICorrection = null
   document.removeEventListener('keydown', handleKeydown, true)
   document.removeEventListener('keydown', handleAltKeyDown)
   document.removeEventListener('keyup', handleAltKeyUp)
@@ -829,6 +1156,10 @@ onBeforeUnmount(() => {
         :is-alt-pressed="isAltPressed"
         :show-search-panel="showSearchPanel"
         :can-merge="selectedSubtitleIds.length >= 2"
+        :has-subtitles="hasContent"
+        :firered-ready="fireredStatus.ready"
+        :show-only-needs-correction="showOnlyNeedsCorrection"
+        :needs-correction-count="subtitleStore.needsCorrectionCount"
         @add-subtitle="openSubtitle"
         @toggle-search="toggleSearchPanel"
         @toggle-scissor="handleScissor"
@@ -836,6 +1167,8 @@ onBeforeUnmount(() => {
         @align-to-waveform="handleAlignToWaveform"
         @toggle-snap="isSnapEnabled = !isSnapEnabled"
         @open-settings="showSettingsDialog = true"
+        @start-correction="startCorrection"
+        @toggle-correction-filter="showOnlyNeedsCorrection = !showOnlyNeedsCorrection"
       />
 
       <!-- 左侧字幕列表 -->
@@ -851,6 +1184,7 @@ onBeforeUnmount(() => {
         :has-audio="hasAudio"
         :current-file-path="subtitleStore.currentFilePath"
         :format-time-stamp="subtitleStore.formatTimeStamp"
+        :show-only-needs-correction="showOnlyNeedsCorrection"
         @update:search-text="searchText = $event"
         @update:replace-text="replaceText = $event"
         @update:show-replace="showReplace = $event"
@@ -863,6 +1197,7 @@ onBeforeUnmount(() => {
         @replace-all="replaceAll"
         @close-search="closeSearch"
         @go-back="goBack"
+        @toggle-correction-mark="subtitleStore.toggleCorrectionMark"
       />
 
       <!-- 右侧字幕编辑区 -->
@@ -871,6 +1206,10 @@ onBeforeUnmount(() => {
           ref="subtitleEditPanelRef"
           :entry="currentEntry"
           :format-time-stamp="subtitleStore.formatTimeStamp"
+          :firered-ready="fireredStatus.ready"
+          :is-correcting="isCorrecting"
+          :correction-result="singleCorrectionResult"
+          :needs-correction-count="subtitleStore.needsCorrectionCount"
           @update-text="handleTextUpdate"
           @update-time="handleTimeUpdate"
           @adjust-time="handleAdjustTime"
@@ -881,12 +1220,47 @@ onBeforeUnmount(() => {
           @text-focus="handleTextFocus"
           @text-blur="handleTextBlur"
           @text-input="handleTextInput"
+          @correct-entry="handleCorrectSingleEntry"
+          @apply-correction="handleApplyCorrection"
+          @dismiss-correction="handleDismissCorrection"
+          @toggle-correction-mark="handleToggleCorrectionMark"
+          @apply-suggestion="handleApplySuggestion"
+          @dismiss-suggestion="handleDismissSuggestion"
         />
       </div>
     </div>
 
     <!-- 设置弹窗 -->
     <SettingsDialog v-model:visible="showSettingsDialog" />
+    
+    <!-- 校正对比弹窗 -->
+    <CorrectionCompareDialog
+      v-model:visible="showCorrectionDialog"
+      :entries="correctionEntries"
+      :audio-path="audioStore.audioFile?.path"
+      @confirm="handleCorrectionConfirm"
+      @cancel="handleCorrectionCancel"
+    />
+
+    <!-- 批量校正进度弹窗 -->
+    <div v-if="isBatchCorrecting" class="correction-progress-overlay">
+      <div class="correction-progress-dialog">
+        <div class="progress-header">
+          <svg class="progress-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+          <span>批量 AI 字幕校正</span>
+        </div>
+        <div class="progress-content">
+          <div class="progress-bar-container">
+            <div class="progress-bar" :style="{ width: correctionProgress.progress + '%' }"></div>
+          </div>
+          <div class="progress-text">{{ correctionProgress.currentText }}</div>
+          <div class="progress-percent">{{ Math.round(correctionProgress.progress) }}%</div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -924,5 +1298,83 @@ onBeforeUnmount(() => {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+}
+
+/* 批量校正进度弹窗 */
+.correction-progress-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.correction-progress-dialog {
+  background: #fff;
+  border-radius: 16px;
+  padding: 24px 32px;
+  min-width: 400px;
+  max-width: 500px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.progress-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.progress-icon {
+  color: #3b82f6;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.progress-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.progress-bar-container {
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
+  min-height: 40px;
+  word-break: break-all;
+}
+
+.progress-percent {
+  font-size: 24px;
+  font-weight: 700;
+  color: #3b82f6;
+  text-align: center;
 }
 </style>

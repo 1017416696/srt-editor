@@ -12,6 +12,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AudioEmptyState: typeof import('./src/components/editor/AudioEmptyState.vue')['default']
+    CorrectionCompareDialog: typeof import('./src/components/CorrectionCompareDialog.vue')['default']
     EditorSidebar: typeof import('./src/components/editor/EditorSidebar.vue')['default']
     GreetComponent: typeof import('./src/components/GreetComponent.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']

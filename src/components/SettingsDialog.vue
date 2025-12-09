@@ -49,6 +49,13 @@ interface SenseVoiceEnvStatus {
   ready: boolean
 }
 
+// FireRedASR 环境状态
+interface FireRedEnvStatus {
+  uv_installed: boolean
+  env_exists: boolean
+  ready: boolean
+}
+
 const whisperModels = ref<WhisperModelInfo[]>([])
 const downloadingModel = ref<string | null>(null)
 const downloadProgress = ref(0)
@@ -59,6 +66,12 @@ const sensevoiceStatus = ref<SenseVoiceEnvStatus>({ uv_installed: false, env_exi
 const isInstallingSensevoice = ref(false)
 const sensevoiceProgress = ref(0)
 const sensevoiceMessage = ref('')
+
+// FireRedASR 相关
+const fireredStatus = ref<FireRedEnvStatus>({ uv_installed: false, env_exists: false, ready: false })
+const isInstallingFirered = ref(false)
+const fireredProgress = ref(0)
+const fireredMessage = ref('')
 
 const fetchWhisperModels = async () => {
   try {
@@ -73,6 +86,14 @@ const fetchSensevoiceStatus = async () => {
     sensevoiceStatus.value = await invoke<SenseVoiceEnvStatus>('check_sensevoice_env_status')
   } catch (e) {
     console.error('Failed to fetch sensevoice status:', e)
+  }
+}
+
+const fetchFireredStatus = async () => {
+  try {
+    fireredStatus.value = await invoke<FireRedEnvStatus>('check_firered_env_status')
+  } catch (e) {
+    console.error('Failed to fetch firered status:', e)
   }
 }
 
@@ -114,6 +135,51 @@ const uninstallSensevoice = async () => {
     await invoke('uninstall_sensevoice')
     await fetchSensevoiceStatus()
     ElMessage.success('SenseVoice 环境已卸载')
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error(`卸载失败：${e instanceof Error ? e.message : '未知错误'}`)
+    }
+  }
+}
+
+// FireRedASR 安装
+const installFirered = async () => {
+  if (!fireredStatus.value.uv_installed) {
+    ElMessage.warning('请先安装 uv 包管理器')
+    return
+  }
+  
+  isInstallingFirered.value = true
+  fireredProgress.value = 0
+  fireredMessage.value = '准备安装...'
+  
+  const unlisten = await listen<{ progress: number; current_text: string }>('firered-progress', (event) => {
+    fireredProgress.value = event.payload.progress
+    fireredMessage.value = event.payload.current_text
+  })
+  
+  try {
+    await invoke('install_firered')
+    await fetchFireredStatus()
+    ElMessage.success('FireRedASR 环境安装成功')
+  } catch (error) {
+    ElMessage.error(`安装失败：${error instanceof Error ? error.message : '未知错误'}`)
+  } finally {
+    isInstallingFirered.value = false
+    unlisten()
+  }
+}
+
+const uninstallFirered = async () => {
+  try {
+    await ElMessageBox.confirm('确定要卸载 FireRedASR 环境吗？这将删除所有相关文件。', '卸载确认', {
+      confirmButtonText: '卸载',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    await invoke('uninstall_firered')
+    await fetchFireredStatus()
+    ElMessage.success('FireRedASR 环境已卸载')
   } catch (e) {
     if (e !== 'cancel') {
       ElMessage.error(`卸载失败：${e instanceof Error ? e.message : '未知错误'}`)
@@ -207,6 +273,7 @@ fetchLogPath()
 const setupWhisperListener = async () => {
   await fetchWhisperModels()
   await fetchSensevoiceStatus()
+  await fetchFireredStatus()
   unlistenProgress = await listen<{ progress: number; current_text: string }>('transcription-progress', (event) => {
     downloadProgress.value = event.payload.progress
     downloadMessage.value = event.payload.current_text
@@ -257,8 +324,9 @@ const handleKeydown = (e: KeyboardEvent) => {
 watch(() => props.visible, (visible) => {
   if (visible) {
     document.addEventListener('keydown', handleKeydown, true)
-    // 每次打开对话框时刷新 SenseVoice 状态
+    // 每次打开对话框时刷新状态
     fetchSensevoiceStatus()
+    fetchFireredStatus()
   } else {
     document.removeEventListener('keydown', handleKeydown, true)
   }
@@ -561,6 +629,55 @@ const shortcutCategories = computed(() => {
                 </div>
               </div>
               
+              <!-- FireRedASR 部分 -->
+              <div class="engine-section firered-section">
+                <h3 class="engine-title">FireRedASR (小红书)</h3>
+                <p class="engine-desc">小红书开源的语音识别模型，用于字幕二次校正，可提升识别准确率。</p>
+                
+                <div class="sensevoice-status">
+                  <div class="status-item">
+                    <span class="status-label">环境状态</span>
+                    <span class="status-value" :class="{ ready: fireredStatus.ready, pending: !fireredStatus.ready }">
+                      {{ fireredStatus.ready ? '已就绪' : (fireredStatus.env_exists ? '依赖不完整' : '未安装') }}
+                    </span>
+                  </div>
+                  <el-button size="small" text @click="fetchFireredStatus">
+                    <i class="i-mdi-refresh"></i> 刷新状态
+                  </el-button>
+                </div>
+                
+                <div v-if="isInstallingFirered" class="install-progress">
+                  <el-progress :percentage="Math.round(fireredProgress)" :stroke-width="8" />
+                  <span class="install-message">{{ fireredMessage }}</span>
+                </div>
+                
+                <div class="sensevoice-actions">
+                  <template v-if="!fireredStatus.ready">
+                    <el-button 
+                      type="primary" 
+                      :disabled="isInstallingFirered || !fireredStatus.uv_installed"
+                      @click="installFirered"
+                    >
+                      {{ isInstallingFirered ? '安装中...' : '安装 FireRedASR 环境' }}
+                    </el-button>
+                    <p v-if="!fireredStatus.uv_installed" class="uv-hint">
+                      需要先安装 <a href="https://docs.astral.sh/uv/getting-started/installation/" target="_blank">uv 包管理器</a>
+                    </p>
+                  </template>
+                  <template v-else>
+                    <div class="whisper-model-item is-downloaded">
+                      <div class="model-info">
+                        <span class="model-name">FireRedASR-AED</span>
+                        <span class="model-size">~600 MB</span>
+                      </div>
+                      <div class="model-actions" @click.stop>
+                        <el-button size="small" type="danger" plain @click="uninstallFirered">卸载</el-button>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+              
               <div class="whisper-tips">
                 <h4>模型说明</h4>
                 <ul>
@@ -568,6 +685,7 @@ const shortcutCategories = computed(() => {
                   <li><strong>Whisper small/medium</strong> - 平衡选择，日常使用</li>
                   <li><strong>Whisper large/turbo</strong> - 高精度，专业场景</li>
                   <li><strong>SenseVoice</strong> - 中文识别优秀，首次使用需下载模型</li>
+                  <li><strong>FireRedASR</strong> - 字幕校正专用，可对已有字幕进行二次校正</li>
                 </ul>
               </div>
             </div>
