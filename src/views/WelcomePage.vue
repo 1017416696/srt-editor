@@ -25,6 +25,12 @@ interface TranscriptionProgress {
   status: string
 }
 
+interface SenseVoiceEnvStatus {
+  uv_installed: boolean
+  env_exists: boolean
+  ready: boolean
+}
+
 const router = useRouter()
 const subtitleStore = useSubtitleStore()
 const audioStore = useAudioStore()
@@ -42,11 +48,18 @@ const transcriptionMessage = ref('')
 const isCancelled = ref(false)
 const isTransitioningToEditor = ref(false)
 
+// SenseVoice 相关状态
+const sensevoiceEnvStatus = ref<SenseVoiceEnvStatus>({ uv_installed: false, env_exists: false, ready: false })
+const isInstallingSensevoice = ref(false)
+
 // 已下载的模型
 const downloadedModels = computed(() => availableModels.value.filter(m => m.downloaded))
 
 // 当前选中的模型显示名称
 const currentModelName = computed(() => {
+  if (configStore.transcriptionEngine === 'sensevoice') {
+    return 'SenseVoice'
+  }
   const model = availableModels.value.find(m => m.name === configStore.whisperModel)
   if (model?.downloaded) return model.name
   // 如果默认模型未下载，显示第一个已下载的模型或 base
@@ -54,9 +67,20 @@ const currentModelName = computed(() => {
   return firstDownloaded?.name || 'base'
 })
 
-// 是否显示下载进度（下载模型时有真实进度）
+// 是否显示引擎切换下拉
+const showEngineDropdown = computed(() => {
+  return downloadedModels.value.length > 0 || sensevoiceEnvStatus.value.ready
+})
+
+// 是否显示下载进度条（只有下载模型时才有真实进度）
 const isDownloading = computed(() => {
-  return transcriptionMessage.value.includes('Downloading') || transcriptionMessage.value.includes('下载')
+  return transcriptionMessage.value.includes('Downloading') || 
+         (transcriptionMessage.value.includes('下载') && !transcriptionMessage.value.includes('首次'))
+})
+
+// 是否正在使用 SenseVoice 转录（不显示进度条）
+const isSensevoiceTranscribing = computed(() => {
+  return configStore.transcriptionEngine === 'sensevoice' && isTranscribing.value && !isInstallingSensevoice.value
 })
 
 // 本地化消息
@@ -113,6 +137,8 @@ onMounted(async () => {
   onUnmounted(() => unlistenProgress())
 
   try { availableModels.value = await invoke<WhisperModelInfo[]>('get_whisper_models') } catch (e) { console.error(e) }
+  // 检查 SenseVoice 环境
+  try { sensevoiceEnvStatus.value = await invoke<SenseVoiceEnvStatus>('check_sensevoice_env_status') } catch (e) { console.error(e) }
 })
 
 onUnmounted(() => { if (unlistenFileDrop) unlistenFileDrop() })
@@ -208,94 +234,176 @@ const startTranscription = async () => {
     const selected = await open({ multiple: false, filters: [{ name: '音频文件', extensions: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'] }] })
     if (!selected || typeof selected !== 'string') return
 
-    const modelName = configStore.whisperModel
-    const model = availableModels.value.find(m => m.name === modelName)
-    
-    // 如果模型未下载，自动下载
-    if (!model || !model.downloaded) {
-      const targetModel = model || availableModels.value.find(m => m.name === 'base')!
-      const confirm = await ElMessageBox.confirm(
-        `模型 ${targetModel.name} (${targetModel.size}) 尚未下载，是否现在下载？`,
-        '需要下载模型',
-        { confirmButtonText: '下载', cancelButtonText: '取消', type: 'info' }
-      ).catch(() => false)
-      if (!confirm) return
-      
-      isTranscribing.value = true
-      transcriptionProgress.value = 0
-      transcriptionMessage.value = '正在下载模型...'
-      showTranscriptionDialog.value = true
-      try {
-        await invoke('download_whisper_model', { modelSize: targetModel.name })
-        availableModels.value = await invoke<WhisperModelInfo[]>('get_whisper_models')
-        // 更新默认模型为刚下载的模型
-        configStore.whisperModel = targetModel.name
-        configStore.saveWhisperSettings()
-      } catch (error) {
-        isTranscribing.value = false
-        showTranscriptionDialog.value = false
-        await ElMessageBox.alert(`下载模型失败：${error instanceof Error ? error.message : '未知错误'}`, '下载失败', { confirmButtonText: '确定', type: 'error' })
-        return
-      }
+    // 根据引擎类型处理
+    if (configStore.transcriptionEngine === 'sensevoice') {
+      await startSensevoiceTranscription(selected)
+    } else {
+      await startWhisperTranscription(selected)
     }
-
-    isTranscribing.value = true
-    isCancelled.value = false
-    transcriptionProgress.value = 0
-    transcriptionMessage.value = '正在转录音频...'
-    showTranscriptionDialog.value = true
-    
-    const entries = await invoke<SubtitleEntry[]>('transcribe_audio_to_subtitles', {
-      audioPath: selected,
-      modelSize: configStore.whisperModel,
-      language: configStore.whisperLanguage,
-    })
-    
-    // 如果已取消，不处理结果
-    if (isCancelled.value) return
-    
-    const fileName = selected.split('/').pop() || 'transcription.srt'
-    await subtitleStore.loadSRTFile({ name: fileName.replace(/\.[^.]+$/, '.srt'), path: '', entries, encoding: 'UTF-8' })
-    
-    // 同时加载音频文件到编辑器
-    const fileExtension = selected.split('.').pop()?.toLowerCase() || 'mp3'
-    await audioStore.loadAudio({ name: fileName, path: selected, duration: 0, format: fileExtension })
-    
-    // 显示过渡动画
-    isTranscribing.value = false
-    isTransitioningToEditor.value = true
-    setTimeout(() => {
-      showTranscriptionDialog.value = false
-      router.push('/editor')
-    }, 800)
   } catch (error) {
     isTranscribing.value = false
     showTranscriptionDialog.value = false
-    // 如果是用户取消的，不显示错误弹窗
     if (isCancelled.value) return
     const errorMsg = error instanceof Error ? error.message : String(error)
-    // 检查是否是取消导致的错误
     if (errorMsg.includes('取消') || errorMsg.includes('cancel')) return
     await ElMessageBox.alert(`转录失败：${errorMsg}`, '转录失败', { confirmButtonText: '确定', type: 'error' })
   }
 }
 
+// Whisper 转录
+const startWhisperTranscription = async (audioPath: string) => {
+  const modelName = configStore.whisperModel
+  const model = availableModels.value.find(m => m.name === modelName)
+  
+  // 如果模型未下载，自动下载
+  if (!model || !model.downloaded) {
+    const targetModel = model || availableModels.value.find(m => m.name === 'base')!
+    const confirm = await ElMessageBox.confirm(
+      `模型 ${targetModel.name} (${targetModel.size}) 尚未下载，是否现在下载？`,
+      '需要下载模型',
+      { confirmButtonText: '下载', cancelButtonText: '取消', type: 'info' }
+    ).catch(() => false)
+    if (!confirm) return
+    
+    isTranscribing.value = true
+    transcriptionProgress.value = 0
+    transcriptionMessage.value = '正在下载模型...'
+    showTranscriptionDialog.value = true
+    try {
+      await invoke('download_whisper_model', { modelSize: targetModel.name })
+      availableModels.value = await invoke<WhisperModelInfo[]>('get_whisper_models')
+      configStore.whisperModel = targetModel.name
+      configStore.saveWhisperSettings()
+    } catch (error) {
+      isTranscribing.value = false
+      showTranscriptionDialog.value = false
+      await ElMessageBox.alert(`下载模型失败：${error instanceof Error ? error.message : '未知错误'}`, '下载失败', { confirmButtonText: '确定', type: 'error' })
+      return
+    }
+  }
+
+  isTranscribing.value = true
+  isCancelled.value = false
+  transcriptionProgress.value = 0
+  transcriptionMessage.value = '正在转录音频...'
+  showTranscriptionDialog.value = true
+  
+  const entries = await invoke<SubtitleEntry[]>('transcribe_audio_to_subtitles', {
+    audioPath,
+    modelSize: configStore.whisperModel,
+    language: configStore.whisperLanguage,
+  })
+  
+  if (isCancelled.value) return
+  await finishTranscription(audioPath, entries)
+}
+
+// SenseVoice 转录
+const startSensevoiceTranscription = async (audioPath: string) => {
+  // 检查环境
+  sensevoiceEnvStatus.value = await invoke<SenseVoiceEnvStatus>('check_sensevoice_env_status')
+  
+  if (!sensevoiceEnvStatus.value.ready) {
+    // 需要安装环境
+    const confirm = await ElMessageBox.confirm(
+      'SenseVoice 环境尚未安装，需要下载约 2-3GB 的依赖。是否现在安装？',
+      '需要安装环境',
+      { confirmButtonText: '安装', cancelButtonText: '取消', type: 'info' }
+    ).catch(() => false)
+    if (!confirm) return
+    
+    if (!sensevoiceEnvStatus.value.uv_installed) {
+      await ElMessageBox.alert(
+        '请先安装 uv 包管理器。\n\n安装命令：\nmacOS/Linux: curl -LsSf https://astral.sh/uv/install.sh | sh\nWindows: powershell -c "irm https://astral.sh/uv/install.ps1 | iex"',
+        '需要安装 uv',
+        { confirmButtonText: '确定', type: 'warning' }
+      )
+      return
+    }
+    
+    // 安装环境
+    isInstallingSensevoice.value = true
+    isTranscribing.value = true
+    transcriptionProgress.value = 0
+    transcriptionMessage.value = '正在安装 SenseVoice 环境...'
+    showTranscriptionDialog.value = true
+    
+    // 监听安装进度
+    const unlistenInstall = await listen<TranscriptionProgress>('sensevoice-progress', (event) => {
+      transcriptionProgress.value = event.payload.progress
+      transcriptionMessage.value = event.payload.current_text
+    })
+    
+    try {
+      await invoke('install_sensevoice')
+      sensevoiceEnvStatus.value = await invoke<SenseVoiceEnvStatus>('check_sensevoice_env_status')
+    } catch (error) {
+      isTranscribing.value = false
+      isInstallingSensevoice.value = false
+      showTranscriptionDialog.value = false
+      unlistenInstall()
+      await ElMessageBox.alert(`安装失败：${error instanceof Error ? error.message : '未知错误'}`, '安装失败', { confirmButtonText: '确定', type: 'error' })
+      return
+    }
+    unlistenInstall()
+    isInstallingSensevoice.value = false
+  }
+
+  isTranscribing.value = true
+  isCancelled.value = false
+  transcriptionProgress.value = 0
+  transcriptionMessage.value = '正在转录音频...'
+  showTranscriptionDialog.value = true
+  
+  const entries = await invoke<SubtitleEntry[]>('transcribe_with_sensevoice_model', {
+    audioPath,
+    language: configStore.whisperLanguage,
+  })
+  
+  if (isCancelled.value) return
+  await finishTranscription(audioPath, entries)
+}
+
+// 完成转录，跳转编辑器
+const finishTranscription = async (audioPath: string, entries: SubtitleEntry[]) => {
+  const fileName = audioPath.split('/').pop() || 'transcription.srt'
+  await subtitleStore.loadSRTFile({ name: fileName.replace(/\.[^.]+$/, '.srt'), path: '', entries, encoding: 'UTF-8' })
+  
+  const fileExtension = audioPath.split('.').pop()?.toLowerCase() || 'mp3'
+  await audioStore.loadAudio({ name: fileName, path: audioPath, duration: 0, format: fileExtension })
+  
+  isTranscribing.value = false
+  isTransitioningToEditor.value = true
+  setTimeout(() => {
+    showTranscriptionDialog.value = false
+    router.push('/editor')
+  }, 800)
+}
+
 const cancelTranscription = async () => {
-  // 标记为已取消
   isCancelled.value = true
-  // 调用后端取消转录
   try {
-    await invoke('cancel_transcription_task')
+    if (configStore.transcriptionEngine === 'sensevoice') {
+      await invoke('cancel_sensevoice_task')
+    } else {
+      await invoke('cancel_transcription_task')
+    }
   } catch (e) {
     console.error('取消转录失败:', e)
   }
   showTranscriptionDialog.value = false
   isTranscribing.value = false
   isTransitioningToEditor.value = false
+  isInstallingSensevoice.value = false
 }
 
-const onSelectModel = (modelName: string) => {
-  configStore.whisperModel = modelName
+const onSelectModel = (command: string) => {
+  if (command === 'sensevoice') {
+    configStore.transcriptionEngine = 'sensevoice'
+  } else {
+    configStore.transcriptionEngine = 'whisper'
+    configStore.whisperModel = command
+  }
   configStore.saveWhisperSettings()
 }
 </script>
@@ -333,20 +441,35 @@ const onSelectModel = (modelName: string) => {
                 <span>AI 语音转录</span>
                 <span class="model-badge">{{ currentModelName }}</span>
               </button>
-              <el-dropdown v-if="downloadedModels.length > 1" trigger="click" @command="onSelectModel">
+              <el-dropdown trigger="click" @command="onSelectModel">
                 <button class="transcription-dropdown" :disabled="isLoading">
                   <i class="i-mdi-chevron-down"></i>
                 </button>
                 <template #dropdown>
                   <el-dropdown-menu>
+                    <!-- Whisper 模型 -->
+                    <el-dropdown-item disabled class="dropdown-header">Whisper</el-dropdown-item>
                     <el-dropdown-item
                       v-for="model in downloadedModels"
                       :key="model.name"
                       :command="model.name"
-                      :class="{ 'is-active': model.name === configStore.whisperModel }"
+                      :class="{ 'is-active': configStore.transcriptionEngine === 'whisper' && model.name === configStore.whisperModel }"
                     >
                       {{ model.name }}
                     </el-dropdown-item>
+                    <el-dropdown-item v-if="downloadedModels.length === 0" disabled>
+                      暂无已下载模型
+                    </el-dropdown-item>
+                    <!-- SenseVoice (仅在已安装时显示) -->
+                    <template v-if="sensevoiceEnvStatus.ready">
+                      <el-dropdown-item divided disabled class="dropdown-header">SenseVoice</el-dropdown-item>
+                      <el-dropdown-item
+                        command="sensevoice"
+                        :class="{ 'is-active': configStore.transcriptionEngine === 'sensevoice' }"
+                      >
+                        SenseVoice
+                      </el-dropdown-item>
+                    </template>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -439,7 +562,7 @@ const onSelectModel = (modelName: string) => {
                 <span class="progress-status">{{ localizedMessage }}</span>
               </div>
             </template>
-            <!-- 转录时只显示状态文字 -->
+            <!-- 转录时只显示状态文字（不显示进度条） -->
             <template v-else>
               <p class="transcription-status">{{ localizedMessage }}</p>
             </template>
@@ -448,7 +571,15 @@ const onSelectModel = (modelName: string) => {
           <!-- 提示信息 -->
           <p class="transcription-hint">
             <i class="i-mdi-information-outline"></i>
-            {{ transcriptionMessage.includes('下载') ? '首次使用需要下载模型，请耐心等待' : '转录时间取决于音频长度和模型大小' }}
+            <template v-if="isSensevoiceTranscribing">
+              SenseVoice 正在处理，请稍候...
+            </template>
+            <template v-else-if="transcriptionMessage.includes('下载') || transcriptionMessage.includes('首次')">
+              首次使用需要下载模型，请耐心等待
+            </template>
+            <template v-else>
+              转录时间取决于音频长度和模型大小
+            </template>
           </p>
         </template>
       </div>
@@ -700,6 +831,20 @@ const onSelectModel = (modelName: string) => {
 /* 只有一个模型时，按钮圆角完整 */
 .transcription-btn-group .transcription-btn:only-child {
   border-radius: 6px;
+}
+
+/* 下拉菜单分组标题 */
+:deep(.dropdown-header) {
+  font-size: 11px !important;
+  color: #909399 !important;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+:deep(.el-dropdown-menu__item.is-active) {
+  color: #409eff;
+  background: rgba(64, 158, 255, 0.08);
 }
 
 /* 最近文件 */

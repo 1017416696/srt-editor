@@ -1,10 +1,15 @@
 mod srt_parser;
 mod waveform_generator;
 mod whisper_transcriber;
+mod sensevoice_transcriber;
 
 use srt_parser::{read_srt_file, write_srt_file, SRTFile, SubtitleEntry};
 use whisper_transcriber::{
     get_available_models, download_model, delete_model, transcribe_audio, cancel_transcription, WhisperModelInfo,
+};
+use sensevoice_transcriber::{
+    check_sensevoice_env, install_sensevoice_env, transcribe_with_sensevoice, 
+    uninstall_sensevoice_env, cancel_sensevoice_transcription, SenseVoiceEnvStatus,
 };
 use waveform_generator::{generate_waveform_with_progress, ProgressCallback};
 use std::fs;
@@ -161,6 +166,42 @@ fn delete_whisper_model(model_size: String) -> Result<String, String> {
 #[tauri::command]
 fn cancel_transcription_task() {
     cancel_transcription();
+}
+
+// ============ SenseVoice 相关命令 ============
+
+/// 检查 SenseVoice 环境状态
+#[tauri::command]
+fn check_sensevoice_env_status() -> SenseVoiceEnvStatus {
+    check_sensevoice_env()
+}
+
+/// 安装 SenseVoice 环境
+#[tauri::command]
+async fn install_sensevoice(window: tauri::Window) -> Result<String, String> {
+    install_sensevoice_env(window).await
+}
+
+/// 使用 SenseVoice 转录音频
+#[tauri::command]
+async fn transcribe_with_sensevoice_model(
+    window: tauri::Window,
+    audio_path: String,
+    language: String,
+) -> Result<Vec<SubtitleEntry>, String> {
+    transcribe_with_sensevoice(audio_path, language, window).await
+}
+
+/// 卸载 SenseVoice 环境
+#[tauri::command]
+fn uninstall_sensevoice() -> Result<String, String> {
+    uninstall_sensevoice_env()
+}
+
+/// 取消 SenseVoice 转录
+#[tauri::command]
+fn cancel_sensevoice_task() {
+    cancel_sensevoice_transcription();
 }
 
 /// 打开模型目录
@@ -637,7 +678,13 @@ pub fn run() {
             delete_whisper_model,
             open_whisper_model_dir,
             transcribe_audio_to_subtitles,
-            cancel_transcription_task
+            cancel_transcription_task,
+            // SenseVoice 相关
+            check_sensevoice_env_status,
+            install_sensevoice,
+            transcribe_with_sensevoice_model,
+            uninstall_sensevoice,
+            cancel_sensevoice_task
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

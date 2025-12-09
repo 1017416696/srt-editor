@@ -31,7 +31,8 @@ export const useConfigStore = defineStore('config', () => {
   // 要删除的标点符号（用户可自定义）
   const punctuationToRemove = ref<string>(DEFAULT_PUNCTUATION)
 
-  // Whisper 语音转录设置
+  // 语音转录设置
+  const transcriptionEngine = ref<'whisper' | 'sensevoice'>('whisper')
   const whisperModel = ref<string>('base')
   const whisperLanguage = ref<string>('zh')
 
@@ -54,20 +55,22 @@ export const useConfigStore = defineStore('config', () => {
     }
   }
 
-  // 保存 Whisper 设置
+  // 保存转录设置
   const saveWhisperSettings = () => {
     localStorage.setItem('srt-editor-whisper', JSON.stringify({
+      engine: transcriptionEngine.value,
       model: whisperModel.value,
       language: whisperLanguage.value,
     }))
   }
 
-  // 加载 Whisper 设置
+  // 加载转录设置
   const loadWhisperSettings = () => {
     const saved = localStorage.getItem('srt-editor-whisper')
     if (saved) {
       try {
         const parsed = JSON.parse(saved)
+        if (parsed.engine) transcriptionEngine.value = parsed.engine
         if (parsed.model) whisperModel.value = parsed.model
         if (parsed.language) whisperLanguage.value = parsed.language
       } catch (e) {
@@ -214,6 +217,7 @@ export const useConfigStore = defineStore('config', () => {
     keyboardShortcuts,
     recentFiles,
     punctuationToRemove,
+    transcriptionEngine,
     whisperModel,
     whisperLanguage,
     updateConfig,

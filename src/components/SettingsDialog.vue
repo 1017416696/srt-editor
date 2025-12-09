@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useConfigStore, DEFAULT_PUNCTUATION } from '@/stores/config'
 import { Setting, Key, InfoFilled, ChatDotRound, Message, Document, Microphone, FolderOpened } from '@element-plus/icons-vue'
 import { open } from '@tauri-apps/plugin-shell'
@@ -42,16 +42,82 @@ interface WhisperModelInfo {
   path?: string
 }
 
+// SenseVoice 环境状态
+interface SenseVoiceEnvStatus {
+  uv_installed: boolean
+  env_exists: boolean
+  ready: boolean
+}
+
 const whisperModels = ref<WhisperModelInfo[]>([])
 const downloadingModel = ref<string | null>(null)
 const downloadProgress = ref(0)
 const downloadMessage = ref('')
+
+// SenseVoice 相关
+const sensevoiceStatus = ref<SenseVoiceEnvStatus>({ uv_installed: false, env_exists: false, ready: false })
+const isInstallingSensevoice = ref(false)
+const sensevoiceProgress = ref(0)
+const sensevoiceMessage = ref('')
 
 const fetchWhisperModels = async () => {
   try {
     whisperModels.value = await invoke<WhisperModelInfo[]>('get_whisper_models')
   } catch (e) {
     console.error('Failed to fetch whisper models:', e)
+  }
+}
+
+const fetchSensevoiceStatus = async () => {
+  try {
+    sensevoiceStatus.value = await invoke<SenseVoiceEnvStatus>('check_sensevoice_env_status')
+  } catch (e) {
+    console.error('Failed to fetch sensevoice status:', e)
+  }
+}
+
+const installSensevoice = async () => {
+  if (!sensevoiceStatus.value.uv_installed) {
+    ElMessage.warning('请先安装 uv 包管理器')
+    return
+  }
+  
+  isInstallingSensevoice.value = true
+  sensevoiceProgress.value = 0
+  sensevoiceMessage.value = '准备安装...'
+  
+  // 监听安装进度
+  const unlisten = await listen<{ progress: number; current_text: string }>('sensevoice-progress', (event) => {
+    sensevoiceProgress.value = event.payload.progress
+    sensevoiceMessage.value = event.payload.current_text
+  })
+  
+  try {
+    await invoke('install_sensevoice')
+    await fetchSensevoiceStatus()
+    ElMessage.success('SenseVoice 环境安装成功')
+  } catch (error) {
+    ElMessage.error(`安装失败：${error instanceof Error ? error.message : '未知错误'}`)
+  } finally {
+    isInstallingSensevoice.value = false
+    unlisten()
+  }
+}
+
+const uninstallSensevoice = async () => {
+  try {
+    await ElMessageBox.confirm('确定要卸载 SenseVoice 环境吗？这将删除所有相关文件。', '卸载确认', {
+      confirmButtonText: '卸载',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    await invoke('uninstall_sensevoice')
+    await fetchSensevoiceStatus()
+    ElMessage.success('SenseVoice 环境已卸载')
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error(`卸载失败：${e instanceof Error ? e.message : '未知错误'}`)
+    }
   }
 }
 
@@ -93,9 +159,10 @@ const openModelDir = async () => {
 }
 
 const setDefaultModel = (modelName: string) => {
+  configStore.transcriptionEngine = 'whisper'
   configStore.whisperModel = modelName
   configStore.saveWhisperSettings()
-  ElMessage.success(`已将 ${modelName} 设为默认模型`)
+  ElMessage.success(`已将 Whisper ${modelName} 设为默认模型`)
 }
 
 // 监听下载进度
@@ -139,6 +206,7 @@ fetchLogPath()
 // 初始化时获取 Whisper 模型列表并监听下载进度
 const setupWhisperListener = async () => {
   await fetchWhisperModels()
+  await fetchSensevoiceStatus()
   unlistenProgress = await listen<{ progress: number; current_text: string }>('transcription-progress', (event) => {
     downloadProgress.value = event.payload.progress
     downloadMessage.value = event.payload.current_text
@@ -189,6 +257,8 @@ const handleKeydown = (e: KeyboardEvent) => {
 watch(() => props.visible, (visible) => {
   if (visible) {
     document.addEventListener('keydown', handleKeydown, true)
+    // 每次打开对话框时刷新 SenseVoice 状态
+    fetchSensevoiceStatus()
   } else {
     document.removeEventListener('keydown', handleKeydown, true)
   }
@@ -394,52 +464,111 @@ const shortcutCategories = computed(() => {
                 <el-button @click="openModelDir">打开模型目录</el-button>
               </div>
               
-              <div class="whisper-intro">
-                <p>Whisper 是 OpenAI 开发的语音识别模型，用于将音频转录为字幕。模型越大，识别精度越高，但速度越慢且占用更多存储空间。</p>
+              <!-- Whisper 部分 -->
+              <div class="engine-section">
+                <h3 class="engine-title">Whisper (OpenAI)</h3>
+                <p class="engine-desc">OpenAI 开发的语音识别模型，支持多语言，模型越大精度越高。</p>
+                
+                <div class="whisper-models-list">
+                  <div
+                    v-for="model in whisperModels"
+                    :key="model.name"
+                    class="whisper-model-item"
+                    :class="{ 'is-default': model.downloaded && configStore.transcriptionEngine === 'whisper' && configStore.whisperModel === model.name, 'is-downloaded': model.downloaded }"
+                    @click="model.downloaded && setDefaultModel(model.name)"
+                  >
+                    <div class="model-radio">
+                      <span v-if="model.downloaded" class="radio-dot" :class="{ active: configStore.transcriptionEngine === 'whisper' && configStore.whisperModel === model.name }"></span>
+                      <span v-else class="radio-placeholder"></span>
+                    </div>
+                    <div class="model-info">
+                      <span class="model-name">{{ model.name }}</span>
+                      <span class="model-size">{{ model.size }}</span>
+                    </div>
+                    <div class="model-actions" @click.stop>
+                      <template v-if="downloadingModel === model.name">
+                        <div class="download-progress">
+                          <el-progress :percentage="Math.round(downloadProgress)" :stroke-width="6" :show-text="false" style="width: 100px" />
+                          <span class="progress-text">{{ Math.round(downloadProgress) }}%</span>
+                        </div>
+                      </template>
+                      <template v-else>
+                        <el-button v-if="!model.downloaded" size="small" type="primary" :disabled="!!downloadingModel" @click="downloadWhisperModel(model.name)">下载</el-button>
+                        <el-button v-else size="small" type="danger" plain :disabled="!!downloadingModel || (configStore.transcriptionEngine === 'whisper' && configStore.whisperModel === model.name)" @click="deleteWhisperModel(model.name)">删除</el-button>
+                      </template>
+                    </div>
+                  </div>
+                </div>
               </div>
               
-              <div class="whisper-models-list">
-                <div
-                  v-for="model in whisperModels"
-                  :key="model.name"
-                  class="whisper-model-item"
-                  :class="{ 'is-default': model.downloaded && configStore.whisperModel === model.name, 'is-downloaded': model.downloaded }"
-                  @click="model.downloaded && setDefaultModel(model.name)"
-                >
-                  <div class="model-radio">
-                    <span v-if="model.downloaded" class="radio-dot" :class="{ active: configStore.whisperModel === model.name }"></span>
-                    <span v-else class="radio-placeholder"></span>
+              <!-- SenseVoice 部分 -->
+              <div class="engine-section sensevoice-section">
+                <h3 class="engine-title">SenseVoice (阿里)</h3>
+                <p class="engine-desc">阿里达摩院开发的语音识别模型，中文识别效果优秀，支持情感识别。</p>
+                
+                <div class="sensevoice-status">
+                  <div class="status-item">
+                    <span class="status-label">环境状态</span>
+                    <span class="status-value" :class="{ ready: sensevoiceStatus.ready, pending: !sensevoiceStatus.ready }">
+                      {{ sensevoiceStatus.ready ? '已就绪' : (sensevoiceStatus.env_exists ? '依赖不完整' : '未安装') }}
+                    </span>
                   </div>
-                  <div class="model-info">
-                    <span class="model-name">{{ model.name }}</span>
-                    <span class="model-size">{{ model.size }}</span>
+                  <div v-if="!sensevoiceStatus.uv_installed" class="status-item">
+                    <span class="status-label">uv 包管理器</span>
+                    <span class="status-value pending">未安装</span>
                   </div>
-                  <div class="model-actions" @click.stop>
-                    <template v-if="downloadingModel === model.name">
-                      <div class="download-progress">
-                        <el-progress :percentage="Math.round(downloadProgress)" :stroke-width="6" :show-text="false" style="width: 100px" />
-                        <span class="progress-text">{{ Math.round(downloadProgress) }}%</span>
+                  <el-button size="small" text @click="fetchSensevoiceStatus">
+                    <i class="i-mdi-refresh"></i> 刷新状态
+                  </el-button>
+                </div>
+                
+                <div v-if="isInstallingSensevoice" class="install-progress">
+                  <el-progress :percentage="Math.round(sensevoiceProgress)" :stroke-width="8" />
+                  <span class="install-message">{{ sensevoiceMessage }}</span>
+                </div>
+                
+                <div class="sensevoice-actions">
+                  <template v-if="!sensevoiceStatus.ready">
+                    <el-button 
+                      type="primary" 
+                      :disabled="isInstallingSensevoice || !sensevoiceStatus.uv_installed"
+                      @click="installSensevoice"
+                    >
+                      {{ isInstallingSensevoice ? '安装中...' : '安装 SenseVoice 环境' }}
+                    </el-button>
+                    <p v-if="!sensevoiceStatus.uv_installed" class="uv-hint">
+                      需要先安装 <a href="https://docs.astral.sh/uv/getting-started/installation/" target="_blank">uv 包管理器</a>
+                    </p>
+                  </template>
+                  <template v-else>
+                    <div 
+                      class="whisper-model-item is-downloaded"
+                      :class="{ 'is-default': configStore.transcriptionEngine === 'sensevoice' }"
+                      @click="configStore.transcriptionEngine = 'sensevoice'; configStore.saveWhisperSettings()"
+                    >
+                      <div class="model-radio">
+                        <span class="radio-dot" :class="{ active: configStore.transcriptionEngine === 'sensevoice' }"></span>
                       </div>
-                    </template>
-                    <template v-else>
-                      <el-button v-if="!model.downloaded" size="small" type="primary" :disabled="!!downloadingModel" @click="downloadWhisperModel(model.name)">下载</el-button>
-                      <el-button v-else size="small" type="danger" plain :disabled="!!downloadingModel || configStore.whisperModel === model.name" @click="deleteWhisperModel(model.name)">删除</el-button>
-                    </template>
-                  </div>
+                      <div class="model-info">
+                        <span class="model-name">SenseVoiceSmall</span>
+                        <span class="model-size">~500 MB</span>
+                      </div>
+                      <div class="model-actions" @click.stop>
+                        <el-button size="small" type="danger" plain :disabled="configStore.transcriptionEngine === 'sensevoice'" @click="uninstallSensevoice">卸载</el-button>
+                      </div>
+                    </div>
+                  </template>
                 </div>
               </div>
               
               <div class="whisper-tips">
                 <h4>模型说明</h4>
                 <ul>
-                  <li><strong>tiny</strong> - 最小最快，适合快速预览</li>
-                  <li><strong>base</strong> - 平衡选择，推荐日常使用</li>
-                  <li><strong>small</strong> - 较高精度，适合一般转录</li>
-                  <li><strong>medium</strong> - 高精度，适合专业场景</li>
-                  <li><strong>large</strong> - 最高精度，适合高要求场景</li>
-                  <li><strong>turbo</strong> - 优化版本，速度与精度平衡</li>
+                  <li><strong>Whisper tiny/base</strong> - 快速预览，适合短音频</li>
+                  <li><strong>Whisper small/medium</strong> - 平衡选择，日常使用</li>
+                  <li><strong>Whisper large/turbo</strong> - 高精度，专业场景</li>
+                  <li><strong>SenseVoice</strong> - 中文识别优秀，首次使用需下载模型</li>
                 </ul>
-                <p class="whisper-hint">提示：你也可以手动将模型文件放入模型目录</p>
               </div>
             </div>
 
@@ -1064,6 +1193,95 @@ const shortcutCategories = computed(() => {
 }
 
 /* 语音模型页面 */
+.engine-section {
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.engine-section:last-of-type {
+  border-bottom: none;
+}
+
+.engine-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 6px;
+}
+
+.engine-desc {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+
+/* SenseVoice 状态 */
+.sensevoice-status {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 12px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-label {
+  font-size: 13px;
+  color: #666;
+}
+
+.status-value {
+  font-size: 13px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.status-value.ready {
+  color: #67c23a;
+  background: rgba(103, 194, 58, 0.1);
+}
+
+.status-value.pending {
+  color: #e6a23c;
+  background: rgba(230, 162, 60, 0.1);
+}
+
+.install-progress {
+  margin-bottom: 12px;
+}
+
+.install-message {
+  display: block;
+  font-size: 12px;
+  color: #909399;
+  margin-top: 6px;
+}
+
+.sensevoice-actions {
+  margin-top: 12px;
+}
+
+.uv-hint {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 8px;
+}
+
+.uv-hint a {
+  color: #409eff;
+  text-decoration: none;
+}
+
+.uv-hint a:hover {
+  text-decoration: underline;
+}
+
 .whisper-intro {
   margin-bottom: 20px;
 }
