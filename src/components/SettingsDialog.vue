@@ -551,6 +551,9 @@ const splitShortcut = (key: string): string[] => {
 // 应用版本
 const appVersion = '0.0.4'
 
+// 标点符号列表折叠状态
+const punctuationExpanded = ref(false)
+
 // 切换标点符号
 const togglePunctuation = (char: string) => {
   if (configStore.punctuationToRemove.includes(char)) {
@@ -667,54 +670,62 @@ const shortcutCategories = computed(() => {
                       <span class="setting-label">删除标点符号列表</span>
                       <span class="setting-desc">点击符号切换选中状态，选中的符号会被删除</span>
                     </div>
-                    <el-button 
-                      size="small" 
-                      @click="configStore.resetPunctuation()"
-                      :disabled="configStore.punctuationToRemove === DEFAULT_PUNCTUATION"
-                    >
-                      恢复默认
-                    </el-button>
+                    <div class="setting-header-actions">
+                      <el-button 
+                        size="small" 
+                        @click="configStore.resetPunctuation()"
+                        :disabled="configStore.punctuationToRemove === DEFAULT_PUNCTUATION"
+                      >
+                        恢复默认
+                      </el-button>
+                      <el-button 
+                        size="small" 
+                        @click="punctuationExpanded = !punctuationExpanded"
+                      >
+                        {{ punctuationExpanded ? '收起' : '展开' }}
+                      </el-button>
+                    </div>
                   </div>
                   
-                  <div class="punctuation-categories">
-                    <div class="punctuation-category">
-                      <span class="category-label">中文标点</span>
-                      <div class="punctuation-chars">
-                        <span 
-                          v-for="char in CHINESE_PUNCTUATION" 
-                          :key="char"
-                          class="punct-char"
-                          :class="{ active: configStore.punctuationToRemove.includes(char) }"
-                          @click="togglePunctuation(char)"
-                        >{{ char }}</span>
+                  <div v-if="punctuationExpanded" class="punctuation-categories">
+                      <div class="punctuation-category">
+                        <span class="category-label">中文标点</span>
+                        <div class="punctuation-chars">
+                          <span 
+                            v-for="char in CHINESE_PUNCTUATION" 
+                            :key="char"
+                            class="punct-char"
+                            :class="{ active: configStore.punctuationToRemove.includes(char) }"
+                            @click="togglePunctuation(char)"
+                          >{{ char }}</span>
+                        </div>
                       </div>
-                    </div>
-                    
-                    <div class="punctuation-category">
-                      <span class="category-label">英文标点</span>
-                      <div class="punctuation-chars">
-                        <span 
-                          v-for="char in ENGLISH_PUNCTUATION" 
-                          :key="char"
-                          class="punct-char"
-                          :class="{ active: configStore.punctuationToRemove.includes(char) }"
-                          @click="togglePunctuation(char)"
-                        >{{ char }}</span>
+                      
+                      <div class="punctuation-category">
+                        <span class="category-label">英文标点</span>
+                        <div class="punctuation-chars">
+                          <span 
+                            v-for="char in ENGLISH_PUNCTUATION" 
+                            :key="char"
+                            class="punct-char"
+                            :class="{ active: configStore.punctuationToRemove.includes(char) }"
+                            @click="togglePunctuation(char)"
+                          >{{ char }}</span>
+                        </div>
                       </div>
-                    </div>
-                    
-                    <div class="punctuation-category">
-                      <span class="category-label">特殊符号</span>
-                      <div class="punctuation-chars">
-                        <span 
-                          v-for="char in SPECIAL_PUNCTUATION" 
-                          :key="char"
-                          class="punct-char"
-                          :class="{ active: configStore.punctuationToRemove.includes(char) }"
-                          @click="togglePunctuation(char)"
-                        >{{ char }}</span>
+                      
+                      <div class="punctuation-category">
+                        <span class="category-label">特殊符号</span>
+                        <div class="punctuation-chars">
+                          <span 
+                            v-for="char in SPECIAL_PUNCTUATION" 
+                            :key="char"
+                            class="punct-char"
+                            :class="{ active: configStore.punctuationToRemove.includes(char) }"
+                            @click="togglePunctuation(char)"
+                          >{{ char }}</span>
+                        </div>
                       </div>
-                    </div>
                   </div>
                 </div>
 
@@ -1428,6 +1439,11 @@ const shortcutCategories = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.setting-header-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .punctuation-categories {
@@ -2700,4 +2716,6 @@ const shortcutCategories = computed(() => {
   transform: scale(0.95);
   opacity: 0;
 }
+
+
 </style>
