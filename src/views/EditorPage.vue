@@ -90,6 +90,28 @@ const loopingEntryId = computed(() => {
   return entry?.id ?? null
 })
 
+// 总字数统计
+const totalCharCount = computed(() => {
+  return subtitleStore.entries.reduce((sum, entry) => sum + entry.text.length, 0)
+})
+
+// 当前选中字幕的序号
+const currentSubtitleIndex = computed(() => {
+  if (!selectedEntryId.value) return 0
+  const index = subtitleStore.entries.findIndex(e => e.id === selectedEntryId.value)
+  return index !== -1 ? index + 1 : 0
+})
+
+// 格式化保存时间
+const formattedSaveTime = computed(() => {
+  if (!subtitleStore.lastSavedAt) return null
+  const date = new Date(subtitleStore.lastSavedAt)
+  const hours = date.getHours().toString().padStart(2, '0')
+  const minutes = date.getMinutes().toString().padStart(2, '0')
+  const seconds = date.getSeconds().toString().padStart(2, '0')
+  return `${hours}:${minutes}:${seconds}`
+})
+
 // 监听 tab 切换
 watch(() => tabManager.activeTabId, async () => {
   // 如果正在校正，取消校正任务
@@ -1447,6 +1469,39 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <!-- 全局底部状态栏 -->
+    <div class="global-status-bar">
+      <!-- 侧边栏+字幕列表区域 -->
+      <div class="status-left-section">
+        <!-- 文件名（靠左） -->
+        <span class="file-name">
+          {{ subtitleStore.currentFilePath ? subtitleStore.currentFilePath.split('/').pop() : '未保存.srt' }}
+        </span>
+        <!-- 字数（居中） -->
+        <span class="status-item status-center">
+          <span class="status-label">字数</span>
+          <span class="status-value">{{ totalCharCount.toLocaleString() }}</span>
+        </span>
+        <!-- 字幕统计（靠右） -->
+        <span class="status-item">
+          <span class="status-label">字幕</span>
+          <span class="status-value">{{ currentSubtitleIndex }}/{{ subtitleStore.entries.length }}</span>
+        </span>
+      </div>
+      
+      <!-- 右侧区域：保存时间 -->
+      <div class="status-right">
+        <span v-if="formattedSaveTime" class="save-time" title="上次保存时间">
+          <svg class="save-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+            <polyline points="17 21 17 13 7 13 7 21"/>
+            <polyline points="7 3 7 8 15 8"/>
+          </svg>
+          {{ formattedSaveTime }}
+        </span>
+      </div>
+    </div>
+
     <!-- 设置弹窗 -->
     <SettingsDialog v-model:visible="showSettingsDialog" />
     
@@ -1608,5 +1663,84 @@ onBeforeUnmount(() => {
   font-weight: 700;
   color: #3b82f6;
   text-align: center;
+}
+
+/* 全局底部状态栏 */
+.global-status-bar {
+  width: 100%;
+  height: 28px;
+  padding: 0;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: #64748b;
+  flex-shrink: 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 左侧区域：文件名 + 统计信息（对应侧边栏+字幕列表宽度） */
+.status-left-section {
+  width: 448px; /* 48px 侧边栏 + 400px 字幕列表 */
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  height: 100%;
+}
+
+.file-name {
+  color: #64748b;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+.status-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.status-label {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.status-value {
+  color: #64748b;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.status-right {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 12px;
+}
+
+.save-time {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #64748b;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.save-icon {
+  opacity: 0.7;
 }
 </style>

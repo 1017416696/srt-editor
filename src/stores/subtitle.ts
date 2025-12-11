@@ -88,6 +88,9 @@ export const useSubtitleStore = defineStore('subtitle', () => {
   const canRedo = computed(() => historyIndex.value < history.value.length - 1)
 
   const currentFilePath = computed(() => tabManager.activeTab?.subtitle.filePath || null)
+  
+  // 最后保存时间
+  const lastSavedAt = computed(() => tabManager.activeTab?.subtitle.lastSavedAt || null)
 
   // 检测时间冲突（可传入 entries 数组以避免重复获取 computed）
   const detectTimeConflicts = (targetEntries?: SubtitleEntry[]): TimeConflict[] => {
@@ -1094,6 +1097,7 @@ export const useSubtitleStore = defineStore('subtitle', () => {
 
       if (tabManager.activeTab) {
         tabManager.activeTab.subtitle.savedHistoryIndex = tabManager.activeTab.subtitle.historyIndex
+        tabManager.activeTab.subtitle.lastSavedAt = Date.now()
       }
       logger.info('文件保存成功', { path: filePath, entries: entries.value.length })
     } catch (error) {
@@ -1122,7 +1126,7 @@ export const useSubtitleStore = defineStore('subtitle', () => {
       
       // 更新 tab 标题
       const fileName = newFilePath.split('/').pop() || newFilePath.split('\\').pop() || 'Untitled'
-      tabManager.activeTab.title = fileName
+      tabManager.activeTab.fileName = fileName
 
       logger.info('文件另存为成功', { path: newFilePath, entries: entries.value.length })
     } catch (error) {
@@ -1295,6 +1299,7 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     formatTimeStamp,
     saveToFile,
     saveAsFile,
+    lastSavedAt,
     // 校正标记相关
     toggleCorrectionMark,
     setCorrectionMark,

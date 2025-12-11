@@ -70,6 +70,8 @@ const needsCorrectionCount = computed(() => {
   return props.entries.filter(e => e.needsCorrection).length
 })
 
+
+
 // 计算可见范围
 const visibleRange = computed(() => {
   const start = Math.max(0, Math.floor(scrollTop.value / SUBTITLE_ITEM_HEIGHT) - VIRTUAL_OVERSCAN)
@@ -313,19 +315,6 @@ defineExpose({
         <el-button type="text" @click="emit('go-back')">返回加载文件</el-button>
       </div>
     </div>
-
-    <!-- 底部统计:字幕文件名 + 字幕数量 -->
-    <div class="list-footer">
-      <span class="file-info">
-        {{ currentFilePath ? currentFilePath.split('/').pop()?.replace('.srt', '') : '豆包输入法' }}.srt
-      </span>
-      <span v-if="selectedEntryId" class="count-info">
-        {{ filteredEntries.findIndex(e => e.id === selectedEntryId) + 1 }}/{{ filteredEntries.length }} 字幕
-      </span>
-      <span v-else class="count-info">
-        0/{{ filteredEntries.length }} 字幕
-      </span>
-    </div>
   </div>
 </template>
 
@@ -463,39 +452,6 @@ defineExpose({
 
 .subtitle-item.is-selected .item-text {
   color: #1e40af;
-}
-
-.list-footer {
-  padding: 0.625rem 1rem;
-  border-top: 1px solid #e2e8f0;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 0.75rem;
-  color: #64748b;
-  gap: 1rem;
-}
-
-.file-info {
-  color: #334155;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
-  min-width: 0;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.count-info {
-  color: #94a3b8;
-  white-space: nowrap;
-  flex-shrink: 0;
-  font-weight: 500;
-  user-select: none;
-  -webkit-user-select: none;
 }
 
 .empty-state {

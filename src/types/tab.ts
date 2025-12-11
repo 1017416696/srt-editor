@@ -12,6 +12,7 @@ export interface TabSubtitleState {
   searchResults: number[]
   currentSearchIndex: number
   filePath: string | null
+  lastSavedAt: number | null // 最后保存时间戳
 }
 
 // 单个标签页的音频状态
@@ -48,6 +49,7 @@ export function createDefaultSubtitleState(): TabSubtitleState {
     searchResults: [],
     currentSearchIndex: 0,
     filePath: null,
+    lastSavedAt: null,
   }
 }
 
