@@ -474,12 +474,12 @@ const finishTranscription = async (audioPath: string, entries: SubtitleEntry[]) 
   const fileExtension = audioPath.split('.').pop()?.toLowerCase() || 'mp3'
   await audioStore.loadAudio({ name: fileName, path: audioPath, duration: 0, format: fileExtension })
 
+  // 关闭对话框，直接跳转编辑器
+  showTranscriptionDialog.value = false
   isTranscribing.value = false
-  isTransitioningToEditor.value = true
-  setTimeout(() => {
-    showTranscriptionDialog.value = false
-    router.push('/editor')
-  }, 800)
+  isLoading.value = false
+  loadingMessage.value = ''
+  router.push('/editor')
 }
 
 const cancelTranscription = async () => {
