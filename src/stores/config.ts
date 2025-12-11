@@ -39,6 +39,10 @@ export const useConfigStore = defineStore('config', () => {
   // FireRedASR 校正设置
   const fireredPreserveCase = ref<boolean>(true) // 保留原始英文大小写
 
+  // 导出设置
+  const defaultExportFormat = ref<string>('txt') // 默认导出格式
+  const defaultFcpxmlFps = ref<number>(30) // FCPXML 默认帧率
+
   // 重置标点符号为默认值
   const resetPunctuation = () => {
     punctuationToRemove.value = DEFAULT_PUNCTUATION
@@ -78,6 +82,28 @@ export const useConfigStore = defineStore('config', () => {
         if (parsed.model) whisperModel.value = parsed.model
         if (parsed.language) whisperLanguage.value = parsed.language
         if (typeof parsed.fireredPreserveCase === 'boolean') fireredPreserveCase.value = parsed.fireredPreserveCase
+      } catch (e) {
+        // ignore
+      }
+    }
+  }
+
+  // 保存导出设置
+  const saveExportSettings = () => {
+    localStorage.setItem('srt-editor-export', JSON.stringify({
+      format: defaultExportFormat.value,
+      fcpxmlFps: defaultFcpxmlFps.value,
+    }))
+  }
+
+  // 加载导出设置
+  const loadExportSettings = () => {
+    const saved = localStorage.getItem('srt-editor-export')
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        if (parsed.format) defaultExportFormat.value = parsed.format
+        if (parsed.fcpxmlFps) defaultFcpxmlFps.value = parsed.fcpxmlFps
       } catch (e) {
         // ignore
       }
@@ -196,6 +222,7 @@ export const useConfigStore = defineStore('config', () => {
   loadConfig()
   loadPunctuation()
   loadWhisperSettings()
+  loadExportSettings()
 
   // 检测平台
   const isMac = () => typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform)
@@ -234,6 +261,8 @@ export const useConfigStore = defineStore('config', () => {
     whisperModel,
     whisperLanguage,
     fireredPreserveCase,
+    defaultExportFormat,
+    defaultFcpxmlFps,
     updateConfig,
     saveConfig,
     loadConfig,
@@ -243,5 +272,7 @@ export const useConfigStore = defineStore('config', () => {
     savePunctuation,
     resetPunctuation,
     saveWhisperSettings,
+    saveExportSettings,
+    loadExportSettings,
   }
 })

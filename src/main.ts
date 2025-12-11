@@ -222,9 +222,11 @@ const globalCloseCurrentTab = async () => {
 const globalExportSubtitles = async (format: string) => {
   try {
     const { useSubtitleStore } = await import('./stores/subtitle')
+    const { useConfigStore } = await import('./stores/config')
     const { save } = await import('@tauri-apps/plugin-dialog')
     const { ElMessage, ElMessageBox } = await import('element-plus')
     const store = useSubtitleStore()
+    const configStore = useConfigStore()
     
     if (store.entries.length === 0) {
       ElMessage.warning('没有字幕内容可导出')
@@ -265,7 +267,8 @@ const globalExportSubtitles = async (format: string) => {
     }
     
     // FCPXML 需要选择帧率和字幕位置
-    let fps = 25.0
+    const defaultFps = configStore.defaultFcpxmlFps
+    let fps = defaultFps
     let positionX = 0
     let positionY = -415
     if (format === 'fcpxml') {
@@ -274,6 +277,13 @@ const globalExportSubtitles = async (format: string) => {
         // 创建对话框容器
         const container = document.createElement('div')
         container.className = 'export-dialog-overlay'
+        const fpsOptions = [
+          { value: 24, label: '24 fps (电影)' },
+          { value: 25, label: '25 fps (PAL)' },
+          { value: 30, label: '30 fps (NTSC)' },
+          { value: 50, label: '50 fps' },
+          { value: 60, label: '60 fps (高帧率)' },
+        ]
         container.innerHTML = `
           <div class="export-dialog-backdrop"></div>
           <div class="export-dialog-content">
@@ -285,10 +295,7 @@ const globalExportSubtitles = async (format: string) => {
               <div class="export-form-row">
                 <label class="export-form-label">帧率</label>
                 <select id="fcpxml-fps" class="export-select">
-                  <option value="24">24 fps (电影)</option>
-                  <option value="25" selected>25 fps (PAL)</option>
-                  <option value="30">30 fps (NTSC)</option>
-                  <option value="60">60 fps (高帧率)</option>
+                  ${fpsOptions.map(opt => `<option value="${opt.value}"${opt.value === defaultFps ? ' selected' : ''}>${opt.label}</option>`).join('')}
                 </select>
               </div>
               <div class="export-form-row">
@@ -404,8 +411,10 @@ const globalExportSubtitles = async (format: string) => {
 const globalShowExportDialog = async () => {
   try {
     const { useSubtitleStore } = await import('./stores/subtitle')
+    const { useConfigStore } = await import('./stores/config')
     const { ElMessage } = await import('element-plus')
     const store = useSubtitleStore()
+    const configStore = useConfigStore()
     
     if (store.entries.length === 0) {
       ElMessage.warning('没有字幕内容可导出')
@@ -419,6 +428,8 @@ const globalShowExportDialog = async () => {
       { value: 'markdown', label: 'Markdown', desc: '带时间戳的文档' },
       { value: 'fcpxml', label: 'FCPXML', desc: 'Final Cut Pro' },
     ]
+    
+    const defaultFormat = configStore.defaultExportFormat
     
     // 创建格式选择对话框
     const selectedFormat = await new Promise<string | null>((resolve) => {
@@ -435,7 +446,7 @@ const globalShowExportDialog = async () => {
             <div class="export-form-row">
               <label class="export-form-label">导出格式</label>
               <select id="export-format" class="export-select">
-                ${exportFormats.map(fmt => `<option value="${fmt.value}">${fmt.label} - ${fmt.desc}</option>`).join('')}
+                ${exportFormats.map(fmt => `<option value="${fmt.value}"${fmt.value === defaultFormat ? ' selected' : ''}>${fmt.label} - ${fmt.desc}</option>`).join('')}
               </select>
             </div>
           </div>

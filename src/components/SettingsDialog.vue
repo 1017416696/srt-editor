@@ -717,6 +717,42 @@ const shortcutCategories = computed(() => {
                     </div>
                   </div>
                 </div>
+
+                <div class="setting-item" :style="configStore.defaultExportFormat === 'fcpxml' ? 'border-bottom: none; padding-bottom: 0;' : ''">
+                  <div class="setting-info">
+                    <span class="setting-label">默认导出格式</span>
+                    <span class="setting-desc">导出字幕时的默认格式</span>
+                  </div>
+                  <el-select
+                    v-model="configStore.defaultExportFormat"
+                    style="width: 220px"
+                    @change="configStore.saveExportSettings()"
+                  >
+                    <el-option value="txt" label="TXT - 纯文本" />
+                    <el-option value="vtt" label="VTT - WebVTT" />
+                    <el-option value="srt" label="SRT - 字幕" />
+                    <el-option value="markdown" label="Markdown" />
+                    <el-option value="fcpxml" label="FCPXML - Final Cut Pro" />
+                  </el-select>
+                </div>
+
+                <div v-if="configStore.defaultExportFormat === 'fcpxml'" class="setting-item" style="padding-top: 8px;">
+                  <div class="setting-info">
+                    <span class="setting-label">FCPXML 默认帧率</span>
+                    <span class="setting-desc">导出 FCPXML 时的默认帧率</span>
+                  </div>
+                  <el-select
+                    v-model="configStore.defaultFcpxmlFps"
+                    style="width: 220px"
+                    @change="configStore.saveExportSettings()"
+                  >
+                    <el-option :value="24" label="24 fps (电影)" />
+                    <el-option :value="25" label="25 fps (PAL)" />
+                    <el-option :value="30" label="30 fps (NTSC)" />
+                    <el-option :value="50" label="50 fps" />
+                    <el-option :value="60" label="60 fps" />
+                  </el-select>
+                </div>
               </div>
             </div>
 
