@@ -128,6 +128,9 @@ const localizedMessage = computed(() => {
 
 let unlistenFileDrop: (() => void) | null = null
 
+let unlistenTranscriptionProgress: (() => void) | null = null
+let unlistenModelDownloadProgress: (() => void) | null = null
+
 onMounted(async () => {
   const appWindow = getCurrentWebviewWindow()
   const unlistenHover = await appWindow.onDragDropEvent((event) => {
@@ -137,18 +140,28 @@ onMounted(async () => {
   })
   unlistenFileDrop = unlistenHover
 
-  const unlistenProgress = await listen<TranscriptionProgress>('transcription-progress', (event) => {
+  // 监听转录进度
+  unlistenTranscriptionProgress = await listen<TranscriptionProgress>('transcription-progress', (event) => {
     transcriptionProgress.value = event.payload.progress
     transcriptionMessage.value = event.payload.current_text
   })
-  onUnmounted(() => unlistenProgress())
+
+  // 监听模型下载进度（单独事件，避免与转录进度冲突）
+  unlistenModelDownloadProgress = await listen<TranscriptionProgress>('model-download-progress', (event) => {
+    transcriptionProgress.value = event.payload.progress
+    transcriptionMessage.value = event.payload.current_text
+  })
 
   try { availableModels.value = await invoke<WhisperModelInfo[]>('get_whisper_models') } catch (e) { console.error(e) }
   // 检查 SenseVoice 环境
   try { sensevoiceEnvStatus.value = await invoke<SenseVoiceEnvStatus>('check_sensevoice_env_status') } catch (e) { console.error(e) }
 })
 
-onUnmounted(() => { if (unlistenFileDrop) unlistenFileDrop() })
+onUnmounted(() => {
+  if (unlistenFileDrop) unlistenFileDrop()
+  if (unlistenTranscriptionProgress) unlistenTranscriptionProgress()
+  if (unlistenModelDownloadProgress) unlistenModelDownloadProgress()
+})
 
 const handleFileDrop = async (paths: string[]) => {
   if (!paths || paths.length === 0) return

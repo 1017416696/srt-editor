@@ -387,7 +387,11 @@ const downloadWhisperModel = async (modelName: string) => {
     await fetchWhisperModels()
     ElMessage.success(`模型 ${modelName} 下载完成`)
   } catch (error) {
-    ElMessage.error(`下载失败：${error instanceof Error ? error.message : '未知错误'}`)
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    // 忽略因新下载任务启动而取消的错误
+    if (!errorMsg.includes('cancelled') && !errorMsg.includes('new download started')) {
+      ElMessage.error(`下载失败：${errorMsg || '未知错误'}`)
+    }
   } finally {
     downloadingModel.value = null
   }
@@ -464,7 +468,8 @@ const setupWhisperListener = async () => {
   await fetchWhisperModels()
   await fetchSensevoiceStatus()
   await fetchFireredStatus()
-  unlistenProgress = await listen<{ progress: number; current_text: string }>('transcription-progress', (event) => {
+  // 使用专门的 model-download-progress 事件，避免与转录进度冲突
+  unlistenProgress = await listen<{ progress: number; current_text: string }>('model-download-progress', (event) => {
     downloadProgress.value = event.payload.progress
     downloadMessage.value = event.payload.current_text
   })

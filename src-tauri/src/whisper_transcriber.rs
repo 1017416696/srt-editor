@@ -2,7 +2,7 @@ use crate::srt_parser::{SubtitleEntry, TimeStamp};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::fs;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tauri::{Window, Emitter};
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
@@ -14,8 +14,11 @@ use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use once_cell::sync::Lazy;
 
-// 全局取消标志
+// 全局取消标志（转录）
 static TRANSCRIPTION_CANCELLED: Lazy<Arc<AtomicBool>> = Lazy::new(|| Arc::new(AtomicBool::new(false)));
+
+// 下载任务ID，用于取消旧的下载任务
+static DOWNLOAD_TASK_ID: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
 
 /// 取消当前转录任务
 pub fn cancel_transcription() {
@@ -30,6 +33,16 @@ fn reset_cancellation() {
 /// 检查是否已取消
 fn is_cancelled() -> bool {
     TRANSCRIPTION_CANCELLED.load(Ordering::SeqCst)
+}
+
+/// 生成新的下载任务ID，同时使旧任务失效
+fn new_download_task_id() -> u64 {
+    DOWNLOAD_TASK_ID.fetch_add(1, Ordering::SeqCst) + 1
+}
+
+/// 检查下载任务是否仍然有效
+fn is_download_task_valid(task_id: u64) -> bool {
+    DOWNLOAD_TASK_ID.load(Ordering::SeqCst) == task_id
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -131,21 +144,59 @@ pub fn delete_model(model_size: &str) -> Result<String, String> {
     Ok(format!("Successfully deleted {} model", model_size))
 }
 
-/// Download Whisper model from Hugging Face
-pub async fn download_model(model_size: &str, window: Window) -> Result<String, String> {
+/// Get partial download file path
+fn get_part_file_path(model_size: &str) -> Result<PathBuf, String> {
     let model_path = get_model_path(model_size)?;
+    Ok(model_path.with_extension("bin.part"))
+}
+
+/// Check if there's a partial download for a model
+pub fn get_partial_download_size(model_size: &str) -> Result<u64, String> {
+    let part_path = get_part_file_path(model_size)?;
+    if part_path.exists() {
+        fs::metadata(&part_path)
+            .map(|m| m.len())
+            .map_err(|e| format!("Failed to get partial file size: {}", e))
+    } else {
+        Ok(0)
+    }
+}
+
+/// Download Whisper model from Hugging Face with resume support
+pub async fn download_model(model_size: &str, window: Window) -> Result<String, String> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+
+    // 生成新的任务ID，使之前的下载任务失效
+    let task_id = new_download_task_id();
+
+    let model_path = get_model_path(model_size)?;
+    let part_path = get_part_file_path(model_size)?;
+
+    log::info!(
+        "Starting download for Whisper {} model, task_id: {}",
+        model_size,
+        task_id
+    );
 
     // Check if already downloaded
     if model_path.exists() {
+        log::info!("Whisper {} model already exists, skipping download", model_size);
         return Ok(format!("Model {} already downloaded", model_size));
     }
 
-    // Emit progress
-    let _ = window.emit("transcription-progress", TranscriptionProgress {
-        progress: 0.0,
-        current_text: format!("Downloading {} model...", model_size),
-        status: "downloading".to_string(),
-    });
+    // Check for existing partial download
+    let existing_size = if part_path.exists() {
+        let size = fs::metadata(&part_path).map(|m| m.len()).unwrap_or(0);
+        log::info!(
+            "Found partial download for Whisper {}: {:.1} MB",
+            model_size,
+            size as f64 / 1024.0 / 1024.0
+        );
+        size
+    } else {
+        0
+    };
 
     // Download URL from ggerganov/whisper.cpp models
     let filename = get_model_filename(model_size);
@@ -154,52 +205,191 @@ pub async fn download_model(model_size: &str, window: Window) -> Result<String, 
         filename
     );
 
-    // Download model
     let client = reqwest::Client::new();
-    let mut response = client
-        .get(&download_url)
+
+    // Emit initial progress (use model-download-progress event to avoid conflict with transcription)
+    let _ = window.emit(
+        "model-download-progress",
+        TranscriptionProgress {
+            progress: 0.0,
+            current_text: if existing_size > 0 {
+                format!("Resuming {} model download...", model_size)
+            } else {
+                format!("Starting {} model download...", model_size)
+            },
+            status: "downloading".to_string(),
+        },
+    );
+
+    // Build request with Range header if we have partial download
+    let mut request = client.get(&download_url);
+    if existing_size > 0 {
+        request = request.header("Range", format!("bytes={}-", existing_size));
+    }
+
+    let response = request
         .send()
         .await
         .map_err(|e| format!("Failed to download model: {}", e))?;
 
-    if !response.status().is_success() {
-        return Err(format!("Failed to download model: HTTP {}", response.status()));
+    // Check response status
+    let status = response.status();
+    let is_partial = status == reqwest::StatusCode::PARTIAL_CONTENT;
+
+    if !status.is_success() && !is_partial {
+        log::error!("Download failed: HTTP {}", status);
+        return Err(format!("Failed to download model: HTTP {}", status));
     }
 
-    let total_size = response.content_length().unwrap_or(0);
-    let mut downloaded: u64 = 0;
-    let mut file_data = Vec::new();
+    // Determine total size and start position from response headers
+    let (total_size, actual_start) = if is_partial {
+        // Parse Content-Range header: "bytes 12345-67890/123456"
+        let content_range = response
+            .headers()
+            .get("content-range")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
 
+        let total = content_range
+            .split('/')
+            .last()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+
+        log::info!(
+            "Resuming Whisper {} download: {:.1} MB / {:.1} MB ({:.1}%)",
+            model_size,
+            existing_size as f64 / 1024.0 / 1024.0,
+            total as f64 / 1024.0 / 1024.0,
+            (existing_size as f64 / total as f64) * 100.0
+        );
+
+        (total, existing_size)
+    } else {
+        // Full download - get size from Content-Length
+        let total = response.content_length().unwrap_or(0);
+        log::info!(
+            "Starting fresh Whisper {} download: {:.1} MB",
+            model_size,
+            total as f64 / 1024.0 / 1024.0
+        );
+        // Server doesn't support range, remove partial file
+        if existing_size > 0 {
+            log::warn!("Server doesn't support resume, restarting download");
+            let _ = fs::remove_file(&part_path);
+        }
+        (total, 0u64)
+    };
+
+    // Open file for writing
+    let (mut file, mut downloaded) = if actual_start > 0 {
+        let file = OpenOptions::new()
+            .append(true)
+            .open(&part_path)
+            .map_err(|e| format!("Failed to open partial file: {}", e))?;
+        (file, actual_start)
+    } else {
+        let file =
+            fs::File::create(&part_path).map_err(|e| format!("Failed to create file: {}", e))?;
+        (file, 0u64)
+    };
+
+    // Emit progress with correct initial state
+    let initial_progress = if total_size > 0 {
+        (downloaded as f32 / total_size as f32) * 100.0
+    } else {
+        0.0
+    };
+
+    let _ = window.emit(
+        "model-download-progress",
+        TranscriptionProgress {
+            progress: initial_progress,
+            current_text: if actual_start > 0 {
+                format!(
+                    "Resuming {} model download... {:.1}%",
+                    model_size, initial_progress
+                )
+            } else {
+                format!("Downloading {} model...", model_size)
+            },
+            status: "downloading".to_string(),
+        },
+    );
+
+    // Stream download directly to file
+    let mut response = response;
     while let Some(chunk) = response
         .chunk()
         .await
         .map_err(|e| format!("Failed to read chunk: {}", e))?
     {
-        file_data.extend_from_slice(&chunk);
+        // 检查任务是否仍然有效（是否有新的下载任务启动）
+        if !is_download_task_valid(task_id) {
+            log::info!(
+                "Download task {} cancelled (new task started), downloaded {} bytes",
+                task_id,
+                downloaded
+            );
+            return Err("Download cancelled: new download started".to_string());
+        }
+
+        file.write_all(&chunk)
+            .map_err(|e| format!("Failed to write chunk: {}", e))?;
+
         downloaded += chunk.len() as u64;
 
         if total_size > 0 {
             let progress = (downloaded as f32 / total_size as f32) * 100.0;
-            let _ = window.emit("transcription-progress", TranscriptionProgress {
-                progress,
-                current_text: format!(
-                    "Downloading {} model... {:.1}%",
-                    model_size, progress
-                ),
-                status: "downloading".to_string(),
-            });
+            let _ = window.emit(
+                "model-download-progress",
+                TranscriptionProgress {
+                    progress,
+                    current_text: format!("Downloading {} model... {:.1}%", model_size, progress),
+                    status: "downloading".to_string(),
+                },
+            );
         }
     }
 
-    fs::write(&model_path, &file_data)
-        .map_err(|e| format!("Failed to write model file: {}", e))?;
+    // Ensure all data is written
+    file.flush().map_err(|e| format!("Failed to flush file: {}", e))?;
+    drop(file);
+
+    // Verify download completed
+    let final_size = fs::metadata(&part_path).map(|m| m.len()).unwrap_or(0);
+
+    if total_size > 0 && final_size != total_size {
+        log::error!(
+            "Download incomplete: expected {} bytes, got {} bytes",
+            total_size,
+            final_size
+        );
+        return Err(format!(
+            "Download incomplete: expected {} bytes, got {} bytes. Please retry to resume.",
+            total_size, final_size
+        ));
+    }
+
+    // Rename partial file to final file
+    fs::rename(&part_path, &model_path)
+        .map_err(|e| format!("Failed to finalize model file: {}", e))?;
+
+    log::info!(
+        "Whisper {} model downloaded successfully ({:.1} MB)",
+        model_size,
+        final_size as f64 / 1024.0 / 1024.0
+    );
 
     // Emit completion
-    let _ = window.emit("transcription-progress", TranscriptionProgress {
-        progress: 100.0,
-        current_text: format!("Model {} downloaded successfully", model_size),
-        status: "completed".to_string(),
-    });
+    let _ = window.emit(
+        "model-download-progress",
+        TranscriptionProgress {
+            progress: 100.0,
+            current_text: format!("Model {} downloaded successfully", model_size),
+            status: "completed".to_string(),
+        },
+    );
 
     Ok(format!("Successfully downloaded {} model", model_size))
 }
