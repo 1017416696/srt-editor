@@ -47,6 +47,16 @@
             <canvas ref="waveformCanvasRef" class="waveform-canvas"></canvas>
           </div>
 
+          <!-- 悬浮高亮区域 - 显示字幕对应的波形范围 -->
+          <div
+            v-if="hoveredSubtitle"
+            class="subtitle-hover-highlight"
+            :style="{
+              left: timeToPixel(timestampToSeconds(hoveredSubtitle.startTime)) + 'px',
+              width: timeToPixel(timestampToSeconds(hoveredSubtitle.endTime) - timestampToSeconds(hoveredSubtitle.startTime)) + 'px'
+            }"
+          ></div>
+
           <!-- 字幕轨道 -->
           <div class="subtitle-track" :class="{ 'scissor-mode': props.scissorMode }" :style="{ height: subtitleTrackHeight + 'px' }" @mousedown="handleTrackMouseDown">
             <div
@@ -61,6 +71,8 @@
               }"
               :style="getSubtitleStyle(subtitle)"
               @mousedown="handleSubtitleMouseDown($event, subtitle)"
+              @mouseenter="handleSubtitleMouseEnter(subtitle)"
+              @mouseleave="handleSubtitleMouseLeave"
               @dblclick="handleSubtitleDoubleClick(subtitle)"
               @contextmenu.prevent="handleSubtitleContextMenu($event, subtitle)"
             >
@@ -299,6 +311,9 @@ const visibleSubtitles = computed(() => {
 
 // 剪刀模式参考线位置
 const scissorLineX = ref<number | null>(null)
+
+// 悬浮高亮状态
+const hoveredSubtitle = ref<SubtitleEntry | null>(null)
 
 // 右键菜单状态
 const contextMenu = ref<{
@@ -965,6 +980,16 @@ const handleWheel = (event: WheelEvent) => {
 
   // 使用 applyZoom 进行节流，但不自动居中播放头（保持当前滚动位置）
   applyZoom(newZoomLevel, false)
+}
+
+// Handle subtitle mouse enter - show hover highlight
+const handleSubtitleMouseEnter = (subtitle: SubtitleEntry) => {
+  hoveredSubtitle.value = subtitle
+}
+
+// Handle subtitle mouse leave - hide hover highlight
+const handleSubtitleMouseLeave = () => {
+  hoveredSubtitle.value = null
 }
 
 // Handle subtitle double click - focus the text input
@@ -2055,6 +2080,21 @@ defineExpose({
   color: #3b82f6;
 }
 
+/* 悬浮高亮区域 - 显示字幕对应的波形范围（覆盖波形和字幕上方空白区域） */
+.subtitle-hover-highlight {
+  position: absolute;
+  top: 30px; /* 从时间刻度尺下方开始 */
+  height: 100px; /* 覆盖波形区域 + 字幕上方空白区域 */
+  background: linear-gradient(
+    180deg,
+    rgba(59, 130, 246, 0.12) 0%,
+    rgba(59, 130, 246, 0.18) 50%,
+    rgba(59, 130, 246, 0.08) 100%
+  );
+  pointer-events: none;
+  z-index: 5;
+}
+
 /* 字幕轨道 */
 .subtitle-track {
   width: 100%;
@@ -2140,20 +2180,20 @@ defineExpose({
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 8px;
+  width: 16px;
   background: #3b82f6;
   opacity: 0;
-  cursor: ew-resize;
+  cursor: col-resize;
   transition: opacity 0.2s;
   z-index: 30;
 }
 
 .resize-handle.left {
-  left: -4px;
+  left: -8px;
 }
 
 .resize-handle.right {
-  right: -4px;
+  right: -8px;
 }
 
 .subtitle-block:hover .resize-handle {
