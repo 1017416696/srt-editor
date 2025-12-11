@@ -633,11 +633,11 @@ const shortcutCategories = computed(() => {
             </div>
           </div>
 
+          <!-- 关闭按钮 -->
+          <button class="close-btn" @click="handleClose">×</button>
+
           <!-- 内容区 -->
           <div class="settings-content">
-            <!-- 关闭按钮 -->
-            <button class="close-btn" @click="handleClose">×</button>
-
             <!-- 常规设置 -->
             <div v-if="activeMenu === 'general'" class="content-section">
               <h2 class="section-title">常规设置</h2>
@@ -1292,6 +1292,7 @@ const shortcutCategories = computed(() => {
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
   display: flex;
   overflow: hidden;
+  position: relative;
 }
 
 /* 侧边栏 */
@@ -1339,6 +1340,7 @@ const shortcutCategories = computed(() => {
 .settings-content {
   flex: 1;
   padding: 24px 32px;
+  padding-top: 56px;
   overflow: hidden;
   position: relative;
   display: flex;
@@ -1357,8 +1359,8 @@ const shortcutCategories = computed(() => {
   position: absolute;
   top: 16px;
   right: 16px;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border: none;
   background: transparent;
   font-size: 20px;
@@ -1367,6 +1369,7 @@ const shortcutCategories = computed(() => {
   border-radius: 6px;
   display: flex;
   align-items: center;
+  z-index: 100;
   justify-content: center;
   transition: all 0.2s;
 }
