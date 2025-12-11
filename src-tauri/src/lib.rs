@@ -9,7 +9,7 @@ use srt_parser::{
     export_to_txt, export_to_vtt, export_to_markdown, export_to_fcpxml,
 };
 use whisper_transcriber::{
-    get_available_models, download_model, delete_model, transcribe_audio, cancel_transcription, WhisperModelInfo,
+    get_available_models, download_model, delete_model, transcribe_audio, cancel_transcription, cancel_download, WhisperModelInfo,
 };
 use sensevoice_transcriber::{
     check_sensevoice_env, install_sensevoice_env, transcribe_with_sensevoice, 
@@ -153,12 +153,19 @@ fn get_whisper_models() -> Result<Vec<WhisperModelInfo>, String> {
 }
 
 /// 下载 Whisper 模型
+/// 下载 Whisper 模型
 #[tauri::command]
 async fn download_whisper_model(
     window: tauri::Window,
     model_size: String,
 ) -> Result<String, String> {
     download_model(&model_size, window).await
+}
+
+/// 取消下载 Whisper 模型
+#[tauri::command]
+fn cancel_whisper_download() {
+    cancel_download();
 }
 
 /// 转录音频文件为字幕
@@ -936,6 +943,7 @@ pub fn run() {
             show_log_in_folder,
             get_whisper_models,
             download_whisper_model,
+            cancel_whisper_download,
             delete_whisper_model,
             open_whisper_model_dir,
             transcribe_audio_to_subtitles,

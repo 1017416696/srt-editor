@@ -230,6 +230,7 @@ interface WhisperModelInfo {
   size: string
   downloaded: boolean
   path?: string
+  partial_size?: number // 部分下载的字节数
 }
 
 // SenseVoice 环境状态
@@ -381,19 +382,33 @@ const downloadWhisperModel = async (modelName: string) => {
   downloadingModel.value = modelName
   downloadProgress.value = 0
   downloadMessage.value = '准备下载...'
-  
+
   try {
     await invoke('download_whisper_model', { modelSize: modelName })
     await fetchWhisperModels()
     ElMessage.success(`模型 ${modelName} 下载完成`)
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error)
-    // 忽略因新下载任务启动而取消的错误
-    if (!errorMsg.includes('cancelled') && !errorMsg.includes('new download started')) {
+    // 忽略因新下载任务启动或用户取消的错误
+    if (
+      !errorMsg.includes('cancelled') &&
+      !errorMsg.includes('new download started')
+    ) {
       ElMessage.error(`下载失败：${errorMsg || '未知错误'}`)
     }
   } finally {
     downloadingModel.value = null
+    // 刷新模型列表以更新部分下载状态
+    await fetchWhisperModels()
+  }
+}
+
+const cancelWhisperDownload = async () => {
+  try {
+    await invoke('cancel_whisper_download')
+    ElMessage.info('下载已取消')
+  } catch (e) {
+    console.error('Failed to cancel download:', e)
   }
 }
 
@@ -517,16 +532,20 @@ const handleKeydown = (e: KeyboardEvent) => {
 }
 
 // 监听弹窗显示状态，添加/移除键盘监听
-watch(() => props.visible, (visible) => {
-  if (visible) {
-    document.addEventListener('keydown', handleKeydown, true)
-    // 每次打开对话框时刷新状态
-    fetchSensevoiceStatus()
-    fetchFireredStatus()
-  } else {
-    document.removeEventListener('keydown', handleKeydown, true)
+watch(
+  () => props.visible,
+  (visible) => {
+    if (visible) {
+      document.addEventListener('keydown', handleKeydown, true)
+      // 每次打开对话框时刷新状态
+      fetchWhisperModels()
+      fetchSensevoiceStatus()
+      fetchFireredStatus()
+    } else {
+      document.removeEventListener('keydown', handleKeydown, true)
+    }
   }
-})
+)
 
 // 组件卸载时清理
 onBeforeUnmount(() => {
@@ -825,9 +844,29 @@ const shortcutCategories = computed(() => {
                           <el-progress :percentage="Math.round(downloadProgress)" :stroke-width="4" :show-text="false" />
                           <span class="progress-text">{{ Math.round(downloadProgress) }}%</span>
                         </div>
+                        <el-button size="small" type="info" plain @click="cancelWhisperDownload">取消</el-button>
                       </template>
                       <template v-else>
-                        <el-button v-if="!model.downloaded" size="small" type="primary" :disabled="!!downloadingModel" @click="downloadWhisperModel(model.name)">下载</el-button>
+                        <template v-if="!model.downloaded">
+                          <el-button 
+                            v-if="model.partial_size" 
+                            size="small" 
+                            type="success" 
+                            :disabled="!!downloadingModel" 
+                            @click="downloadWhisperModel(model.name)"
+                          >
+                            继续下载
+                          </el-button>
+                          <el-button 
+                            v-else 
+                            size="small" 
+                            type="primary" 
+                            :disabled="!!downloadingModel" 
+                            @click="downloadWhisperModel(model.name)"
+                          >
+                            下载
+                          </el-button>
+                        </template>
                         <el-button v-else size="small" type="danger" plain :disabled="!!downloadingModel || (configStore.transcriptionEngine === 'whisper' && configStore.whisperModel === model.name)" @click="deleteWhisperModel(model.name)">卸载</el-button>
                       </template>
                     </div>

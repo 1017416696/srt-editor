@@ -58,6 +58,15 @@ pub struct WhisperModelInfo {
     pub size: String,
     pub downloaded: bool,
     pub path: Option<String>,
+    /// 部分下载的字节数（用于显示"继续下载"）
+    pub partial_size: Option<u64>,
+}
+
+/// 取消当前下载任务
+pub fn cancel_download() {
+    // 增加任务ID使当前下载任务失效
+    new_download_task_id();
+    log::info!("Download cancelled by user");
 }
 
 /// Get the model directory path
@@ -119,11 +128,21 @@ pub fn get_available_models() -> Result<Vec<WhisperModelInfo>, String> {
             None
         };
 
+        // 检查是否有部分下载
+        let partial_size = if !downloaded {
+            get_part_file_path(name)
+                .ok()
+                .and_then(|p| if p.exists() { fs::metadata(&p).ok().map(|m| m.len()) } else { None })
+        } else {
+            None
+        };
+
         model_list.push(WhisperModelInfo {
             name: name.to_string(),
             size: size.to_string(),
             downloaded,
             path,
+            partial_size,
         });
     }
 

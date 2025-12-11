@@ -18,6 +18,7 @@ interface WhisperModelInfo {
   size: string
   downloaded: boolean
   path?: string
+  partial_size?: number
 }
 
 interface TranscriptionProgress {
