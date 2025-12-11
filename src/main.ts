@@ -347,6 +347,16 @@ const globalExportSubtitles = async (format: string) => {
           document.body.removeChild(container)
           resolve(null)
         })
+        
+        // ESC 键关闭弹窗
+        const handleKeydown = (e: KeyboardEvent) => {
+          if (e.key === 'Escape') {
+            document.removeEventListener('keydown', handleKeydown)
+            document.body.removeChild(container)
+            resolve(null)
+          }
+        }
+        document.addEventListener('keydown', handleKeydown)
       })
       
       if (result === null) {
@@ -458,6 +468,16 @@ const globalShowExportDialog = async () => {
         document.body.removeChild(container)
         resolve(null)
       })
+      
+      // ESC 键关闭弹窗
+      const handleKeydown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          document.removeEventListener('keydown', handleKeydown)
+          document.body.removeChild(container)
+          resolve(null)
+        }
+      }
+      document.addEventListener('keydown', handleKeydown)
     })
     
     if (selectedFormat) {
