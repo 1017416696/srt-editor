@@ -103,6 +103,7 @@ export const useConfigStore = defineStore('config', () => {
     { key: 'Shift+Tab', description: '保存并上一条', action: 'save-and-prev' },
     { key: 'Ctrl+S', description: '保存文件', action: 'save-file' },
     { key: 'Ctrl+O', description: '打开文件', action: 'open-file' },
+    { key: 'Ctrl+E', description: '导出', action: 'export-dialog' },
     { key: 'Ctrl+W', description: '关闭标签页', action: 'close-tab' },
     { key: 'Ctrl+Q', description: '关闭窗口', action: 'close-window' },
     { key: 'Ctrl+F', description: '查找', action: 'find' },

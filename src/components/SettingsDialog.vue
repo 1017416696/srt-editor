@@ -589,7 +589,7 @@ const shortcutCategories = computed(() => {
     },
     {
       name: '文件操作',
-      actions: ['save-file', 'open-file', 'close-tab', 'close-window']
+      actions: ['save-file', 'open-file', 'export-dialog', 'close-tab', 'close-window']
     },
     {
       name: '编辑操作',
