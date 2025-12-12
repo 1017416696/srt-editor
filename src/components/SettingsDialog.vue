@@ -362,7 +362,8 @@ const installSensevoice = async (useGpu: boolean = false) => {
     await fetchSensevoiceStatus()
     ElMessage.success(`SenseVoice ${versionType} 版本安装成功`)
   } catch (error) {
-    ElMessage.error(`安装失败：${error instanceof Error ? error.message : String(error)}`)
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    ElMessage.error(`安装失败：${formatDownloadError(errorMsg)}`)
   } finally {
     isInstallingSensevoice.value = false
     unlisten()
@@ -435,7 +436,8 @@ const downloadSensevoiceModel = async (modelName: string) => {
     await fetchSensevoiceModels()
     ElMessage.success(`模型 ${modelName} 下载完成`)
   } catch (error) {
-    ElMessage.error(`下载失败：${error instanceof Error ? error.message : String(error)}`)
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    ElMessage.error(`下载失败：${formatDownloadError(errorMsg)}`)
   } finally {
     downloadingSensevoiceModel.value = null
     unlisten()
@@ -481,7 +483,8 @@ const installFirered = async () => {
     await fetchFireredStatus()
     ElMessage.success('FireRedASR 环境安装成功')
   } catch (error) {
-    ElMessage.error(`安装失败：${error instanceof Error ? error.message : '未知错误'}`)
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    ElMessage.error(`安装失败：${formatDownloadError(errorMsg)}`)
   } finally {
     isInstallingFirered.value = false
     unlisten()
@@ -505,6 +508,39 @@ const uninstallFirered = async () => {
   }
 }
 
+// 将下载错误转换为用户友好的中文提示
+const formatDownloadError = (error: string): string => {
+  const lowerError = error.toLowerCase()
+  
+  if (lowerError.includes('error sending request') || lowerError.includes('connection')) {
+    return '网络连接失败，请检查网络后重试'
+  }
+  if (lowerError.includes('timeout') || lowerError.includes('timed out')) {
+    return '连接超时，请检查网络后重试'
+  }
+  if (lowerError.includes('dns') || lowerError.includes('resolve')) {
+    return '无法解析服务器地址，请检查网络设置'
+  }
+  if (lowerError.includes('ssl') || lowerError.includes('certificate')) {
+    return '安全连接失败，请检查系统时间或网络代理设置'
+  }
+  if (lowerError.includes('http 403') || lowerError.includes('forbidden')) {
+    return '访问被拒绝，可能需要使用代理'
+  }
+  if (lowerError.includes('http 404') || lowerError.includes('not found')) {
+    return '模型文件不存在，请稍后重试'
+  }
+  if (lowerError.includes('http 5')) {
+    return '服务器暂时不可用，请稍后重试'
+  }
+  if (lowerError.includes('incomplete')) {
+    return '下载不完整，请点击"继续下载"重试'
+  }
+  
+  // 如果是其他错误，返回简化的提示
+  return '下载失败，请检查网络后重试'
+}
+
 const downloadWhisperModel = async (modelName: string) => {
   downloadingModel.value = modelName
   downloadProgress.value = 0
@@ -521,7 +557,7 @@ const downloadWhisperModel = async (modelName: string) => {
       !errorMsg.includes('cancelled') &&
       !errorMsg.includes('new download started')
     ) {
-      ElMessage.error(`下载失败：${errorMsg || '未知错误'}`)
+      ElMessage.error(`下载失败：${formatDownloadError(errorMsg)}`)
     }
   } finally {
     downloadingModel.value = null
@@ -533,9 +569,13 @@ const downloadWhisperModel = async (modelName: string) => {
 const cancelWhisperDownload = async () => {
   try {
     await invoke('cancel_whisper_download')
+    downloadingModel.value = null
     ElMessage.info('下载已取消')
+    // 刷新模型列表以更新部分下载状态
+    await fetchWhisperModels()
   } catch (e) {
     console.error('Failed to cancel download:', e)
+    downloadingModel.value = null
   }
 }
 
