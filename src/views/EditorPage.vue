@@ -882,15 +882,36 @@ const startCorrection = async () => {
   isBatchCorrecting.value = true
   correctionProgress.value = { progress: 0, currentText: '正在加载模型...', status: 'loading' }
   
-  // 监听进度事件（确保进度只会前进不会后退）
+  // 监听进度事件
   const unlistenProgress = await listen<{ progress: number; current_text: string; status: string }>('firered-progress', (event) => {
-    // 只有当新进度大于当前进度时才更新（防止进度回退）
-    if (event.payload.progress >= correctionProgress.value.progress) {
-      correctionProgress.value = {
-        progress: event.payload.progress,
-        currentText: event.payload.current_text,
-        status: event.payload.status
-      }
+    const newProgress = event.payload.progress
+    const currentProgress = correctionProgress.value.progress
+    const newText = event.payload.current_text
+    
+    // 调试：打印所有进度事件
+    console.log('[FireRed Progress Event]', {
+      newProgress,
+      currentProgress,
+      newText,
+      status: event.payload.status
+    })
+    
+    // 进度阶段说明：
+    // 0-1%: 设备检测（显示 GPU/CPU 信息）
+    // 1-2%: 模型加载
+    // 5-100%: 实际校正进度
+    
+    // 始终更新文本内容（让用户看到设备信息等重要消息）
+    // 进度条只前进不后退
+    correctionProgress.value = {
+      progress: Math.max(newProgress, currentProgress),
+      currentText: newText,
+      status: event.payload.status
+    }
+    
+    // 打印设备信息到控制台
+    if (newText.includes('使用设备')) {
+      console.log('🔥 FireRedASR', newText)
     }
   })
   

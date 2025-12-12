@@ -980,6 +980,59 @@ pub fn switch_firered_env(use_gpu: bool) -> Result<String, String> {
     Ok(format!("已切换到 {} 版本", if use_gpu { "GPU" } else { "CPU" }))
 }
 
+/// 在 Rust 端检测 GPU 信息
+fn detect_gpu_info(python_path: &std::path::Path) -> Option<String> {
+    // 使用 Python 快速检测 GPU
+    let detect_script = r#"
+import sys
+try:
+    import torch
+    if torch.cuda.is_available():
+        name = torch.cuda.get_device_name(0)
+        print(f"GPU ({name})")
+    else:
+        print("CPU")
+except:
+    print("CPU")
+"#;
+    
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        
+        let output = Command::new(python_path)
+            .args(["-c", detect_script])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .ok()?;
+        
+        if output.status.success() {
+            let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !result.is_empty() {
+                return Some(result);
+            }
+        }
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        let output = Command::new(python_path)
+            .args(["-c", detect_script])
+            .output()
+            .ok()?;
+        
+        if output.status.success() {
+            let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !result.is_empty() {
+                return Some(result);
+            }
+        }
+    }
+    
+    None
+}
+
 /// 写入 Python 校正脚本
 fn write_correction_script() -> Result<(), String> {
     let scripts_dir = get_scripts_dir()?;
@@ -987,15 +1040,65 @@ fn write_correction_script() -> Result<(), String> {
     
     let script_content = r#"#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""FireRedASR 字幕校正脚本"""
+"""FireRedASR 字幕校正脚本 v4 - 使用文件传递进度"""
 
 import sys
-import json
-import argparse
 import os
-import re
+import json
 import tempfile
+
+# 进度文件路径（通过环境变量传入）
+PROGRESS_FILE = os.environ.get('FIRERED_PROGRESS_FILE', '')
+
+def emit_progress(progress, current, total, text, device_info=False):
+    """写入进度到文件"""
+    if not PROGRESS_FILE:
+        return
+    try:
+        msg = {
+            "progress": progress,
+            "current": current,
+            "total": total,
+            "text": text,
+            "device_info": device_info
+        }
+        with open(PROGRESS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(msg, f, ensure_ascii=False)
+    except:
+        pass
+
+import argparse
+import re
 from pydub import AudioSegment
+
+def get_firered_model_path():
+    """获取 FireRedASR 模型路径"""
+    home = os.path.expanduser("~")
+    hub_dir = os.path.join(home, ".cache", "modelscope", "hub")
+    
+    # 路径格式1: ~/.cache/modelscope/hub/FireRedTeam/FireRedASR-AED-L
+    path1 = os.path.join(hub_dir, "FireRedTeam", "FireRedASR-AED-L")
+    if os.path.exists(path1):
+        return path1
+    
+    # 路径格式2: ~/.cache/modelscope/hub/models/FireRedTeam/FireRedASR-AED-L
+    path2 = os.path.join(hub_dir, "models", "FireRedTeam", "FireRedASR-AED-L")
+    if os.path.exists(path2):
+        return path2
+    
+    # 路径格式3: ~/.cache/modelscope/hub/models--FireRedTeam--FireRedASR-AED-L/snapshots/xxx
+    models_dir = os.path.join(hub_dir, "models--FireRedTeam--FireRedASR-AED-L")
+    if os.path.exists(models_dir):
+        snapshots_dir = os.path.join(models_dir, "snapshots")
+        if os.path.exists(snapshots_dir):
+            for entry in os.listdir(snapshots_dir):
+                entry_path = os.path.join(snapshots_dir, entry)
+                if os.path.isdir(entry_path):
+                    return entry_path
+        return models_dir
+    
+    # 默认返回路径格式1
+    return path1
 
 def parse_srt_time(time_str):
     """解析 SRT 时间格式 00:00:01,000 -> 毫秒"""
@@ -1078,31 +1181,74 @@ def preserve_original_case(original, corrected):
     
     return ''.join(result)
 
+def load_firered_model_from_local(model_dir):
+    """从本地目录加载 FireRedASR AED 模型"""
+    emit_progress(1, 0, 0, "正在加载 PyTorch...", False)
+    import torch
+    import argparse as argparse_module
+    
+    emit_progress(1.5, 0, 0, "正在加载 FireRedASR 模块...", False)
+    from fireredasr.data.asr_feat import ASRFeatExtractor
+    from fireredasr.models.fireredasr_aed import FireRedAsrAed
+    from fireredasr.tokenizer.aed_tokenizer import ChineseCharEnglishSpmTokenizer
+    
+    # 修复 PyTorch 2.6+ 的兼容性问题
+    torch.serialization.add_safe_globals([argparse_module.Namespace])
+    
+    # 检测是否有 GPU 可用
+    use_gpu = torch.cuda.is_available()
+    device = "cuda" if use_gpu else "cpu"
+    device_name = torch.cuda.get_device_name(0) if use_gpu else "CPU"
+    
+    # 发送设备信息
+    emit_progress(2, 0, 0, f"使用设备: {device.upper()} ({device_name})", True)
+    
+    emit_progress(2.5, 0, 0, "正在加载特征提取器...", False)
+    cmvn_path = os.path.join(model_dir, "cmvn.ark")
+    feat_extractor = ASRFeatExtractor(cmvn_path)
+    
+    emit_progress(3, 0, 0, "正在加载模型权重 (约4.4GB)...", False)
+    model_path = os.path.join(model_dir, "model.pth.tar")
+    package = torch.load(model_path, map_location=lambda storage, loc: storage, weights_only=False)
+    model = FireRedAsrAed.from_args(package["args"])
+    model.load_state_dict(package["model_state_dict"], strict=True)
+    model.eval()
+    
+    # 如果有 GPU，将模型移到 GPU
+    if use_gpu:
+        emit_progress(3.5, 0, 0, "正在将模型移至 GPU...", False)
+        model = model.cuda()
+    
+    emit_progress(4, 0, 0, "正在加载分词器...", False)
+    dict_path = os.path.join(model_dir, "dict.txt")
+    spm_model = os.path.join(model_dir, "train_bpe1000.model")
+    tokenizer = ChineseCharEnglishSpmTokenizer(dict_path, spm_model)
+    
+    return feat_extractor, model, tokenizer, use_gpu
+
 def correct_subtitles(srt_path, audio_path, language="zh", preserve_case=True):
     """使用 FireRedASR 校正字幕"""
     import torch
-    import argparse
-    
-    # 修复 PyTorch 2.6+ 的兼容性问题
-    # 添加 argparse.Namespace 到安全全局变量列表
-    torch.serialization.add_safe_globals([argparse.Namespace])
-    
-    from fireredasr.models.fireredasr import FireRedAsr
     
     # 解析 SRT
+    emit_progress(0.2, 0, 0, "正在解析字幕文件...", False)
     entries = parse_srt(srt_path)
     if not entries:
         return {"entries": []}
     
     # 加载音频
+    emit_progress(0.3, 0, 0, f"正在加载音频文件...", False)
     audio = AudioSegment.from_file(audio_path)
     
     # 加载模型 (使用本地已下载的模型)
-    print("正在加载 FireRedASR 模型...", file=sys.stderr)
     model_dir = get_firered_model_path()
     if not os.path.exists(model_dir):
         raise RuntimeError(f"模型未下载，请先在设置中下载 FireRedASR-AED-L 模型")
-    model = FireRedAsr.from_pretrained(model_dir)
+    feat_extractor, model, tokenizer, use_gpu = load_firered_model_from_local(model_dir)
+    
+    # 发送模型加载完成消息
+    device_str = f"GPU: {torch.cuda.get_device_name(0)}" if use_gpu else "CPU"
+    emit_progress(5, 0, len(entries), f"模型加载完成 ({device_str})，开始校正 {len(entries)} 条字幕...", False)
     
     # 创建临时目录
     tmp_dir = tempfile.mkdtemp()
@@ -1113,14 +1259,10 @@ def correct_subtitles(srt_path, audio_path, language="zh", preserve_case=True):
     try:
         for i, entry in enumerate(entries):
             # 输出进度（JSON 格式，包含当前字幕信息）
-            progress = (i + 1) / total * 100
-            progress_info = json.dumps({
-                "progress": progress,
-                "current": i + 1,
-                "total": total,
-                "text": entry['text'][:50]  # 截取前50个字符
-            }, ensure_ascii=False)
-            print(f"PROGRESS:{progress_info}", file=sys.stderr, flush=True)
+            # 进度从 5% 开始（前面 0-5% 是设备检测和模型加载），到 100% 结束
+            progress = 5 + (i + 1) / total * 95
+            text_preview = entry['text'][:30].replace('\n', ' ')
+            emit_progress(progress, i + 1, total, text_preview, False)
             
             start_ms = entry['start_ms']
             end_ms = entry['end_ms']
@@ -1135,29 +1277,56 @@ def correct_subtitles(srt_path, audio_path, language="zh", preserve_case=True):
             
             # 识别
             try:
-                # FireRedAsr.transcribe(batch_uttid, batch_wav_path, args)
-                res = model.transcribe([f"utt_{i}"], [chunk_file], {"language": language})
-                corrected_text = res[0].get("text", "").strip() if res else ""
+                # 提取特征
+                feats, lengths, _ = feat_extractor([chunk_file])
+                
+                # 如果使用 GPU，将数据移到 GPU
+                if use_gpu:
+                    feats = feats.cuda()
+                    lengths = lengths.cuda()
+                
+                # 使用模型进行识别
+                hyps = model.transcribe(
+                    feats,
+                    lengths,
+                    beam_size=1,
+                    nbest=1,
+                    decode_max_len=0,
+                    softmax_smoothing=1.0,
+                    length_penalty=0.0,
+                    eos_penalty=1.0,
+                )
+                
+                # 解码结果
+                if hyps:
+                    hyp = hyps[0][0]  # 取第一个结果的 1-best
+                    hyp_ids = [int(id) for id in hyp["yseq"].cpu()]
+                    corrected_text = tokenizer.detokenize(hyp_ids).strip()
+                else:
+                    corrected_text = ""
                 
                 # 如果启用了保留大小写，恢复原始英文大小写
                 if preserve_case and corrected_text:
                     corrected_text = preserve_original_case(original_text, corrected_text)
             except Exception as e:
                 print(f"识别片段 {i+1} 失败: {e}", file=sys.stderr)
+                import traceback
+                traceback.print_exc(file=sys.stderr)
                 corrected_text = original_text
             
             # 清理临时文件
             os.remove(chunk_file)
             
-            # 比较差异
-            has_diff = original_text.strip() != corrected_text
+            # 比较差异 - 如果识别结果为空，使用原文，不算差异
+            final_text = corrected_text if corrected_text else original_text
+            has_diff = original_text.strip() != final_text.strip()
             
             results.append({
                 "id": entry['id'],
                 "start_ms": start_ms,
                 "end_ms": end_ms,
                 "original": original_text,
-                "corrected": corrected_text if corrected_text else original_text,
+                "corrected": final_text,
                 "has_diff": has_diff
             })
     finally:
@@ -1197,6 +1366,8 @@ if __name__ == "__main__":
     std::fs::write(&script_path, script_content)
         .map_err(|e| format!("写入脚本失败: {}", e))?;
     
+    log::info!("[FireRed] 脚本已写入: {:?}", script_path);
+    
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -1230,9 +1401,6 @@ pub async fn correct_with_firered(
     preserve_case: bool,
     window: Window,
 ) -> Result<Vec<CorrectionEntry>, String> {
-    use std::process::Stdio;
-    use std::io::{BufRead, BufReader};
-    
     reset_cancellation();
     
     // 检查环境
@@ -1248,8 +1416,27 @@ pub async fn correct_with_firered(
     // 确保脚本是最新的
     write_correction_script()?;
     
+    // 记录开始时间
+    let start_time = std::time::Instant::now();
+    log::info!("[FireRed] ========== AI 校正开始 ==========");
+    
+    // 在 Rust 端检测 GPU 信息
+    let device_info = detect_gpu_info(&python_path);
+    let device_text = if let Some(ref info) = device_info {
+        format!("使用设备: {}", info)
+    } else {
+        "使用设备: 检测中...".to_string()
+    };
+    
     let _ = window.emit("firered-progress", FireRedProgress {
-        progress: 0.0,
+        progress: 1.0,
+        current_text: device_text.clone(),
+        status: "loading".to_string(),
+    });
+    log::info!("[FireRed] {}", device_text);
+    
+    let _ = window.emit("firered-progress", FireRedProgress {
+        progress: 2.0,
         current_text: "正在加载 FireRedASR 模型...".to_string(),
         status: "loading".to_string(),
     });
@@ -1287,56 +1474,87 @@ pub async fn correct_with_firered(
         args.push("--no-preserve-case".to_string());
     }
     
-    // 执行 Python 脚本（使用 piped stderr 来读取进度）
+    // 创建进度文件
+    let progress_file = std::env::temp_dir().join(format!("firered_progress_{}.json", std::process::id()));
+    let _ = std::fs::remove_file(&progress_file); // 确保文件不存在
+    
+    // 执行 Python 脚本
     let mut child = Command::new(&python_path)
         .args(&args)
-        .stderr(Stdio::piped())
+        .env("FIRERED_PROGRESS_FILE", progress_file.to_str().unwrap())
         .spawn()
         .map_err(|e| format!("执行校正脚本失败: {}", e))?;
     
-    // 读取 stderr 中的进度信息
-    if let Some(stderr) = child.stderr.take() {
-        let reader = BufReader::new(stderr);
-        for line in reader.lines() {
-            if is_cancelled() {
-                let _ = child.kill();
-                let _ = std::fs::remove_file(&output_path);
-                return Err("校正已取消".to_string());
+    // 轮询进度文件
+    let mut last_progress: f32 = 2.0;
+    loop {
+        // 检查进程是否结束
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                // 进程已结束
+                let _ = std::fs::remove_file(&progress_file);
+                if !status.success() {
+                    let _ = std::fs::remove_file(&output_path);
+                    return Err(format!("校正脚本执行失败 (退出码: {:?})", status.code()));
+                }
+                break;
             }
-            
-            if let Ok(line) = line {
-                // 解析进度信息
-                if line.starts_with("PROGRESS:") {
-                    let json_str = &line[9..];
-                    if let Ok(progress_info) = serde_json::from_str::<serde_json::Value>(json_str) {
-                        let progress = progress_info["progress"].as_f64().unwrap_or(0.0) as f32;
-                        let current = progress_info["current"].as_i64().unwrap_or(0);
-                        let total = progress_info["total"].as_i64().unwrap_or(0);
-                        let text = progress_info["text"].as_str().unwrap_or("");
-                        
-                        let _ = window.emit("firered-progress", FireRedProgress {
-                            progress,
-                            current_text: format!("正在校正 {}/{}: {}", current, total, text),
-                            status: "correcting".to_string(),
-                        });
+            Ok(None) => {
+                // 进程仍在运行，检查进度文件
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(&progress_file);
+                let _ = std::fs::remove_file(&output_path);
+                return Err(format!("检查进程状态失败: {}", e));
+            }
+        }
+        
+        // 检查是否取消
+        if is_cancelled() {
+            let _ = child.kill();
+            let _ = std::fs::remove_file(&progress_file);
+            let _ = std::fs::remove_file(&output_path);
+            return Err("校正已取消".to_string());
+        }
+        
+        // 读取进度文件
+        if let Ok(content) = std::fs::read_to_string(&progress_file) {
+            if let Ok(progress_info) = serde_json::from_str::<serde_json::Value>(&content) {
+                let progress = progress_info["progress"].as_f64().unwrap_or(0.0) as f32;
+                let current = progress_info["current"].as_i64().unwrap_or(0);
+                let total = progress_info["total"].as_i64().unwrap_or(0);
+                let text = progress_info["text"].as_str().unwrap_or("");
+                
+                // 只有进度变化时才更新
+                if progress > last_progress {
+                    last_progress = progress;
+                    
+                    let display_text = if current > 0 {
+                        format!("正在进行 AI 校正 ({}/{})", current, total)
+                    } else {
+                        text.to_string()
+                    };
+                    
+                    // 只记录关键日志（模型加载阶段，进度 < 6%）
+                    if progress < 6.0 {
+                        log::info!("[FireRed] {}", display_text);
                     }
+                    
+                    let _ = window.emit("firered-progress", FireRedProgress {
+                        progress,
+                        current_text: display_text,
+                        status: "correcting".to_string(),
+                    });
                 }
             }
         }
+        
+        // 短暂休眠，避免 CPU 占用过高
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
     
-    // 等待进程完成
-    let status = child.wait().map_err(|e| format!("等待进程失败: {}", e))?;
-    
-    if is_cancelled() {
-        let _ = std::fs::remove_file(&output_path);
-        return Err("校正已取消".to_string());
-    }
-    
-    if !status.success() {
-        let _ = std::fs::remove_file(&output_path);
-        return Err("校正脚本执行失败".to_string());
-    }
+    // 清理进度文件
+    let _ = std::fs::remove_file(&progress_file);
     
     // 读取结果
     let result_json = std::fs::read_to_string(&output_path)
@@ -1361,10 +1579,23 @@ pub async fn correct_with_firered(
     }).collect();
     
     let diff_count = entries.iter().filter(|e| e.has_diff).count();
+    let total_count = entries.len();
+    
+    // 记录结束时间和总耗时
+    let elapsed = start_time.elapsed();
+    let elapsed_secs = elapsed.as_secs_f64();
+    let elapsed_str = if elapsed_secs >= 60.0 {
+        format!("{:.0}分{:.1}秒", elapsed_secs / 60.0, elapsed_secs % 60.0)
+    } else {
+        format!("{:.1}秒", elapsed_secs)
+    };
+    
+    log::info!("[FireRed] 校正完成: 共 {} 条字幕，发现 {} 处差异，耗时 {}", total_count, diff_count, elapsed_str);
+    log::info!("[FireRed] ========== AI 校正结束 ==========");
     
     let _ = window.emit("firered-progress", FireRedProgress {
         progress: 100.0,
-        current_text: format!("校正完成！发现 {} 处差异", diff_count),
+        current_text: format!("校正完成！共 {} 条，{} 处差异，耗时 {}", total_count, diff_count, elapsed_str),
         status: "completed".to_string(),
     });
     
@@ -1437,13 +1668,42 @@ def load_model():
     if MODEL is None:
         import torch
         import argparse
+        from fireredasr.data.asr_feat import ASRFeatExtractor
+        from fireredasr.models.fireredasr_aed import FireRedAsrAed
+        from fireredasr.tokenizer.aed_tokenizer import ChineseCharEnglishSpmTokenizer
+        
+        # 修复 PyTorch 2.6+ 的兼容性问题
         torch.serialization.add_safe_globals([argparse.Namespace])
-        from fireredasr.models.fireredasr import FireRedAsr
+        
+        # 检测是否有 GPU 可用
+        use_gpu = torch.cuda.is_available()
+        device = "cuda" if use_gpu else "cpu"
+        device_name = torch.cuda.get_device_name(0) if use_gpu else "CPU"
+        print(f"使用设备: {device.upper()} ({device_name})", file=sys.stderr, flush=True)
+        
         print("Loading FireRedASR model...", file=sys.stderr)
         model_dir = get_firered_model_path()
         if not os.path.exists(model_dir):
             raise RuntimeError(f"模型未下载，请先在设置中下载 FireRedASR-AED-L 模型")
-        MODEL = FireRedAsr.from_pretrained(model_dir)
+        
+        cmvn_path = os.path.join(model_dir, "cmvn.ark")
+        feat_extractor = ASRFeatExtractor(cmvn_path)
+        
+        model_path = os.path.join(model_dir, "model.pth.tar")
+        package = torch.load(model_path, map_location=lambda storage, loc: storage, weights_only=False)
+        model = FireRedAsrAed.from_args(package["args"])
+        model.load_state_dict(package["model_state_dict"], strict=True)
+        model.eval()
+        
+        # 如果有 GPU，将模型移到 GPU
+        if use_gpu:
+            model = model.cuda()
+        
+        dict_path = os.path.join(model_dir, "dict.txt")
+        spm_model = os.path.join(model_dir, "train_bpe1000.model")
+        tokenizer = ChineseCharEnglishSpmTokenizer(dict_path, spm_model)
+        
+        MODEL = (feat_extractor, model, tokenizer, use_gpu)
         print("Model loaded!", file=sys.stderr)
     return MODEL
 
@@ -1534,9 +1794,35 @@ class Handler(BaseHTTPRequestHandler):
             tmp_file.close()
             
             # 识别
-            model = load_model()
-            result = model.transcribe(["utt"], [tmp_file.name], {"language": language})
-            corrected = result[0].get("text", "").strip() if result else ""
+            feat_extractor, model, tokenizer, use_gpu = load_model()
+            
+            # 提取特征
+            feats, lengths, _ = feat_extractor([tmp_file.name])
+            
+            # 如果使用 GPU，将数据移到 GPU
+            if use_gpu:
+                feats = feats.cuda()
+                lengths = lengths.cuda()
+            
+            # 使用模型进行识别
+            hyps = model.transcribe(
+                feats,
+                lengths,
+                beam_size=1,
+                nbest=1,
+                decode_max_len=0,
+                softmax_smoothing=1.0,
+                length_penalty=0.0,
+                eos_penalty=1.0,
+            )
+            
+            # 解码结果
+            if hyps:
+                hyp = hyps[0][0]  # 取第一个结果的 1-best
+                hyp_ids = [int(id) for id in hyp["yseq"].cpu()]
+                corrected = tokenizer.detokenize(hyp_ids).strip()
+            else:
+                corrected = ""
             
             # 如果启用了保留大小写，恢复原始英文大小写
             if preserve_case and corrected:

@@ -1207,7 +1207,6 @@ export const useSubtitleStore = defineStore('subtitle', () => {
     if (entry) {
       entry.correctionSuggestion = suggestion
       entry.needsCorrection = true
-      logger.info('设置校正建议', { entryId, suggestion: suggestion.substring(0, 30) })
     }
   }
 
