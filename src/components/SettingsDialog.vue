@@ -477,10 +477,32 @@ const downloadSensevoiceModel = async (modelName: string) => {
     ElMessage.success(`模型 ${modelName} 下载完成`)
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error)
-    ElMessage.error(`下载失败：${formatDownloadError(errorMsg)}`)
+    // 忽略因新下载任务启动或用户取消的错误
+    if (
+      !errorMsg.includes('cancelled') &&
+      !errorMsg.includes('取消')
+    ) {
+      ElMessage.error(`下载失败：${formatDownloadError(errorMsg)}`)
+    }
   } finally {
     downloadingSensevoiceModel.value = null
     unlisten()
+    // 刷新模型列表以更新部分下载状态
+    await fetchSensevoiceModels()
+  }
+}
+
+// 取消 SenseVoice 模型下载
+const cancelSensevoiceModelDownload = async () => {
+  try {
+    await invoke('cancel_sensevoice_model_download_cmd')
+    downloadingSensevoiceModel.value = null
+    ElMessage.info('下载已取消')
+    // 刷新模型列表以更新部分下载状态
+    await fetchSensevoiceModels()
+  } catch (e) {
+    console.error('Failed to cancel SenseVoice model download:', e)
+    downloadingSensevoiceModel.value = null
   }
 }
 
@@ -523,10 +545,33 @@ const downloadFireredModel = async (modelName: string) => {
     await fetchFireredModels()
     ElMessage.success(`模型 ${modelName} 下载完成`)
   } catch (error) {
-    ElMessage.error(`下载失败：${error instanceof Error ? error.message : String(error)}`)
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    // 忽略因新下载任务启动或用户取消的错误
+    if (
+      !errorMsg.includes('cancelled') &&
+      !errorMsg.includes('取消')
+    ) {
+      ElMessage.error(`下载失败：${formatDownloadError(errorMsg)}`)
+    }
   } finally {
     downloadingFireredModel.value = null
     unlisten()
+    // 刷新模型列表以更新部分下载状态
+    await fetchFireredModels()
+  }
+}
+
+// 取消 FireRedASR 模型下载
+const cancelFireredModelDownload = async () => {
+  try {
+    await invoke('cancel_firered_model_download_cmd')
+    downloadingFireredModel.value = null
+    ElMessage.info('下载已取消')
+    // 刷新模型列表以更新部分下载状态
+    await fetchFireredModels()
+  } catch (e) {
+    console.error('Failed to cancel FireRedASR model download:', e)
+    downloadingFireredModel.value = null
   }
 }
 
@@ -1307,8 +1352,10 @@ const shortcutCategories = computed(() => {
                         <div class="model-card-actions" @click.stop>
                           <template v-if="downloadingSensevoiceModel === model.name">
                             <div class="download-progress-inline">
-                              <el-progress :percentage="Math.round(sensevoiceModelProgress)" :stroke-width="4" />
+                              <el-progress :percentage="Math.round(sensevoiceModelProgress)" :stroke-width="4" :show-text="false" />
+                              <span class="progress-text">{{ Math.round(sensevoiceModelProgress) }}%</span>
                             </div>
+                            <el-button size="small" type="info" plain @click="cancelSensevoiceModelDownload">取消</el-button>
                           </template>
                           <template v-else>
                             <template v-if="!model.downloaded">
@@ -1495,8 +1542,10 @@ const shortcutCategories = computed(() => {
                         <div class="model-card-actions" @click.stop>
                           <template v-if="downloadingFireredModel === model.name">
                             <div class="download-progress-inline">
-                              <el-progress :percentage="Math.round(fireredModelProgress)" :stroke-width="4" />
+                              <el-progress :percentage="Math.round(fireredModelProgress)" :stroke-width="4" :show-text="false" />
+                              <span class="progress-text">{{ Math.round(fireredModelProgress) }}%</span>
                             </div>
+                            <el-button size="small" type="info" plain @click="cancelFireredModelDownload">取消</el-button>
                           </template>
                           <template v-else>
                             <template v-if="!model.downloaded">

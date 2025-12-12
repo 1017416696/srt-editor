@@ -14,13 +14,13 @@ use whisper_transcriber::{
 use sensevoice_transcriber::{
     check_sensevoice_env, install_sensevoice_env, transcribe_with_sensevoice, 
     uninstall_sensevoice_env, uninstall_sensevoice_env_by_type, switch_sensevoice_env,
-    cancel_sensevoice_transcription, SenseVoiceEnvStatus,
+    cancel_sensevoice_transcription, cancel_sensevoice_model_download, SenseVoiceEnvStatus,
     get_sensevoice_models, download_sensevoice_model, delete_sensevoice_model, SenseVoiceModelInfo,
 };
 use firered_corrector::{
     check_firered_env, install_firered_env, correct_with_firered, correct_single_entry,
     uninstall_firered_env, uninstall_firered_env_by_type, switch_firered_env,
-    cancel_firered_correction, preload_firered_service, is_service_running,
+    cancel_firered_correction, cancel_firered_model_download, preload_firered_service, is_service_running,
     preload_audio_for_correction,
     get_firered_models, download_firered_model, delete_firered_model,
     FireRedEnvStatus, CorrectionEntry, SingleCorrectionResult, FireRedModelInfo,
@@ -243,6 +243,12 @@ fn cancel_sensevoice_task() {
     cancel_sensevoice_transcription();
 }
 
+/// 取消 SenseVoice 模型下载
+#[tauri::command]
+fn cancel_sensevoice_model_download_cmd() {
+    cancel_sensevoice_model_download();
+}
+
 /// 获取 SenseVoice 模型列表
 #[tauri::command]
 fn get_sensevoice_model_list() -> Vec<SenseVoiceModelInfo> {
@@ -309,6 +315,12 @@ fn switch_firered(use_gpu: bool) -> Result<String, String> {
 #[tauri::command]
 fn cancel_firered_task() {
     cancel_firered_correction();
+}
+
+/// 取消 FireRedASR 模型下载
+#[tauri::command]
+fn cancel_firered_model_download_cmd() {
+    cancel_firered_model_download();
 }
 
 /// 预加载 FireRedASR 服务（启动服务并加载模型）
@@ -1020,6 +1032,7 @@ pub fn run() {
             uninstall_sensevoice_by_type,
             switch_sensevoice,
             cancel_sensevoice_task,
+            cancel_sensevoice_model_download_cmd,
             get_sensevoice_model_list,
             download_sensevoice_model_cmd,
             delete_sensevoice_model_cmd,
@@ -1035,6 +1048,7 @@ pub fn run() {
             uninstall_firered_by_type,
             switch_firered,
             cancel_firered_task,
+            cancel_firered_model_download_cmd,
             get_firered_models_cmd,
             download_firered_model_cmd,
             delete_firered_model_cmd,

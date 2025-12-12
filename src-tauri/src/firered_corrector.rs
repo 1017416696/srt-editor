@@ -2,17 +2,37 @@ use crate::srt_parser::TimeStamp;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tauri::{Emitter, Window};
 use once_cell::sync::Lazy;
 
-// 全局取消标志
+// 全局取消标志（校正任务）
 static FIRERED_CANCELLED: Lazy<Arc<AtomicBool>> = Lazy::new(|| Arc::new(AtomicBool::new(false)));
+
+// 模型下载任务ID，用于取消旧的下载任务
+static FIRERED_MODEL_DOWNLOAD_TASK_ID: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
 
 /// 取消当前校正任务
 pub fn cancel_firered_correction() {
     FIRERED_CANCELLED.store(true, Ordering::SeqCst);
+}
+
+/// 取消当前模型下载任务
+pub fn cancel_firered_model_download() {
+    // 增加任务ID使当前下载任务失效
+    FIRERED_MODEL_DOWNLOAD_TASK_ID.fetch_add(1, Ordering::SeqCst);
+    log::info!("FireRedASR model download cancelled by user");
+}
+
+/// 生成新的模型下载任务ID
+fn new_firered_model_download_task_id() -> u64 {
+    FIRERED_MODEL_DOWNLOAD_TASK_ID.fetch_add(1, Ordering::SeqCst) + 1
+}
+
+/// 检查模型下载任务是否仍然有效
+fn is_firered_model_download_task_valid(task_id: u64) -> bool {
+    FIRERED_MODEL_DOWNLOAD_TASK_ID.load(Ordering::SeqCst) == task_id
 }
 
 /// 重置取消标志
@@ -367,7 +387,8 @@ pub async fn download_firered_model(model_name: &str, window: Window) -> Result<
     use std::fs::{self, OpenOptions};
     use std::io::Write;
     
-    reset_cancellation();
+    // 生成新的任务ID，使之前的下载任务失效
+    let task_id = new_firered_model_download_task_id();
     
     // 检查环境是否就绪
     let env_status = check_firered_env();
@@ -406,6 +427,11 @@ pub async fn download_firered_model(model_name: &str, window: Window) -> Result<
     
     // 下载每个文件
     for file_info in FIRERED_AED_L_FILES.iter() {
+        // 检查任务是否仍然有效
+        if !is_firered_model_download_task_valid(task_id) {
+            return Err("下载已取消".to_string());
+        }
+        
         let file_path = model_path.join(file_info.name);
         let part_path = model_path.join(format!("{}.part", file_info.name));
         
@@ -482,8 +508,8 @@ pub async fn download_firered_model(model_name: &str, window: Window) -> Result<
         while let Some(chunk) = response.chunk().await
             .map_err(|e| format!("读取数据失败: {}", e))? 
         {
-            // 检查是否取消
-            if is_cancelled() {
+            // 检查任务是否仍然有效
+            if !is_firered_model_download_task_valid(task_id) {
                 return Err("下载已取消".to_string());
             }
             
