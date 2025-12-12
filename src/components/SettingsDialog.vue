@@ -1033,8 +1033,19 @@ const shortcutCategories = computed(() => {
                 
                 <div class="engine-content">
                   <!-- GPU 版本卡片（仅在支持 CUDA 时显示，放在前面因为推荐） -->
-                  <div v-if="supportsCuda" class="env-version-card" :class="{ 'is-active': sensevoiceStatus.active_env === 'gpu' && sensevoiceStatus.gpu_env.ready }">
-                    <div class="env-version-header">
+                  <div 
+                    v-if="supportsCuda" 
+                    class="env-version-card" 
+                    :class="{ 
+                      'is-active': sensevoiceStatus.active_env === 'gpu' && sensevoiceStatus.gpu_env.ready,
+                      'is-clickable': sensevoiceStatus.gpu_env.ready && sensevoiceStatus.active_env !== 'gpu'
+                    }"
+                    @click="sensevoiceStatus.gpu_env.ready && sensevoiceStatus.active_env !== 'gpu' && switchSensevoiceVersion(true)"
+                  >
+                    <div class="env-version-left">
+                      <div class="env-version-radio">
+                        <span class="radio-dot" :class="{ active: sensevoiceStatus.active_env === 'gpu' && sensevoiceStatus.gpu_env.ready }"></span>
+                      </div>
                       <div class="env-version-info">
                         <span class="env-version-name">
                           GPU 版本
@@ -1042,24 +1053,9 @@ const shortcutCategories = computed(() => {
                         </span>
                         <span class="env-version-size">~2.5 GB（需要 NVIDIA 显卡和 CUDA）</span>
                       </div>
-                      <div class="env-version-status">
-                        <span v-if="sensevoiceStatus.gpu_env.ready && sensevoiceStatus.active_env === 'gpu'" class="status-tag active">使用中</span>
-                        <span v-else-if="sensevoiceStatus.gpu_env.ready" class="status-tag ready">已安装</span>
-                        <span v-else-if="sensevoiceStatus.gpu_env.installed" class="status-tag pending">依赖不完整</span>
-                        <span v-else class="status-tag">未安装</span>
-                      </div>
                     </div>
-                    <div class="env-version-actions">
+                    <div class="env-version-actions" @click.stop>
                       <template v-if="sensevoiceStatus.gpu_env.ready">
-                        <el-button 
-                          v-if="sensevoiceStatus.active_env !== 'gpu'"
-                          size="small" 
-                          type="primary"
-                          :disabled="isInstallingSensevoice"
-                          @click="switchSensevoiceVersion(true)"
-                        >
-                          切换使用
-                        </el-button>
                         <el-button 
                           size="small" 
                           type="danger" 
@@ -1084,30 +1080,25 @@ const shortcutCategories = computed(() => {
                   </div>
                   
                   <!-- CPU 版本卡片 -->
-                  <div class="env-version-card" :class="{ 'is-active': sensevoiceStatus.active_env === 'cpu' && sensevoiceStatus.cpu_env.ready }">
-                    <div class="env-version-header">
+                  <div 
+                    class="env-version-card" 
+                    :class="{ 
+                      'is-active': sensevoiceStatus.active_env === 'cpu' && sensevoiceStatus.cpu_env.ready,
+                      'is-clickable': sensevoiceStatus.cpu_env.ready && sensevoiceStatus.active_env !== 'cpu'
+                    }"
+                    @click="sensevoiceStatus.cpu_env.ready && sensevoiceStatus.active_env !== 'cpu' && switchSensevoiceVersion(false)"
+                  >
+                    <div class="env-version-left">
+                      <div class="env-version-radio">
+                        <span class="radio-dot" :class="{ active: sensevoiceStatus.active_env === 'cpu' && sensevoiceStatus.cpu_env.ready }"></span>
+                      </div>
                       <div class="env-version-info">
                         <span class="env-version-name">CPU 版本</span>
                         <span class="env-version-size">~200 MB</span>
                       </div>
-                      <div class="env-version-status">
-                        <span v-if="sensevoiceStatus.cpu_env.ready && sensevoiceStatus.active_env === 'cpu'" class="status-tag active">使用中</span>
-                        <span v-else-if="sensevoiceStatus.cpu_env.ready" class="status-tag ready">已安装</span>
-                        <span v-else-if="sensevoiceStatus.cpu_env.installed" class="status-tag pending">依赖不完整</span>
-                        <span v-else class="status-tag">未安装</span>
-                      </div>
                     </div>
-                    <div class="env-version-actions">
+                    <div class="env-version-actions" @click.stop>
                       <template v-if="sensevoiceStatus.cpu_env.ready">
-                        <el-button 
-                          v-if="sensevoiceStatus.active_env !== 'cpu'"
-                          size="small" 
-                          type="primary"
-                          :disabled="isInstallingSensevoice"
-                          @click="switchSensevoiceVersion(false)"
-                        >
-                          切换使用
-                        </el-button>
                         <el-button 
                           size="small" 
                           type="danger" 
@@ -3066,24 +3057,46 @@ const shortcutCategories = computed(() => {
   transition: all 0.2s;
 }
 
-.env-version-card:hover {
+.env-version-card.is-clickable {
+  cursor: pointer;
+}
+
+.env-version-card.is-clickable:hover {
   background: #f3f4f6;
+  border-color: #d1d5db;
 }
 
 .env-version-card.is-active {
   background: #eff6ff;
-  border-color: #93c5fd;
+  border-color: #3b82f6;
 }
 
-.env-version-card.is-recommended {
-  border-color: #86efac;
-  background: #f0fdf4;
-}
-
-.env-version-header {
+.env-version-left {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 12px;
+}
+
+.env-version-radio {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.radio-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid #d1d5db;
+  transition: all 0.2s;
+}
+
+.radio-dot.active {
+  border-color: #3b82f6;
+  background: #3b82f6;
+  box-shadow: inset 0 0 0 3px #fff;
 }
 
 .env-version-info {
@@ -3113,35 +3126,6 @@ const shortcutCategories = computed(() => {
 .env-version-size {
   font-size: 12px;
   color: #9ca3af;
-}
-
-.env-version-status {
-  margin-top: 4px;
-}
-
-.status-tag {
-  font-size: 11px;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: #f3f4f6;
-  color: #6b7280;
-}
-
-.status-tag.active {
-  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-  color: #fff;
-  font-weight: 600;
-}
-
-.status-tag.ready {
-  background: rgba(82, 196, 26, 0.1);
-  color: #52c41a;
-}
-
-.status-tag.pending {
-  background: rgba(250, 173, 20, 0.1);
-  color: #faad14;
 }
 
 .env-version-actions {
