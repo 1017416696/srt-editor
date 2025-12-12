@@ -10,6 +10,9 @@ const router = useRouter()
 const tabManager = useTabManagerStore()
 const audioStore = useAudioStore()
 
+// 是否为 macOS（需要为红绿灯按钮预留空间）
+const isMacOS = ref(/Mac|iPhone|iPad|iPod/.test(navigator.userAgent))
+
 // 拖拽状态
 const draggedTabId = ref<string | null>(null)
 const dragOverTabId = ref<string | null>(null)
@@ -112,8 +115,13 @@ const handleDragEnd = () => {
 
 <template>
   <div class="titlebar">
-    <!-- 左侧拖拽区域（红绿灯右边） -->
-    <div class="drag-region drag-region-left" @mousedown.left="onTitlebarMousedown" @dblclick="onTitlebarDoubleClick"></div>
+    <!-- 左侧拖拽区域（macOS 红绿灯右边） -->
+    <div 
+      class="drag-region drag-region-left" 
+      :class="{ 'macos': isMacOS }"
+      @mousedown.left="onTitlebarMousedown" 
+      @dblclick="onTitlebarDoubleClick"
+    ></div>
     
     <!-- 标签页区域 -->
     <div class="tabs-container">
@@ -172,8 +180,12 @@ const handleDragEnd = () => {
 }
 
 .drag-region-left {
-  width: 80px; /* 红绿灯区域 */
+  width: 12px; /* Windows/Linux 默认小间距 */
   flex-shrink: 0;
+}
+
+.drag-region-left.macos {
+  width: 80px; /* macOS 红绿灯区域 */
 }
 
 .drag-region-right {
