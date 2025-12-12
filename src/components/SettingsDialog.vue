@@ -1032,6 +1032,57 @@ const shortcutCategories = computed(() => {
                 </div>
                 
                 <div class="engine-content">
+                  <!-- GPU 版本卡片（仅在支持 CUDA 时显示，放在前面因为推荐） -->
+                  <div v-if="supportsCuda" class="env-version-card" :class="{ 'is-active': sensevoiceStatus.active_env === 'gpu' && sensevoiceStatus.gpu_env.ready }">
+                    <div class="env-version-header">
+                      <div class="env-version-info">
+                        <span class="env-version-name">
+                          GPU 版本
+                          <span class="recommended-tag">推荐</span>
+                        </span>
+                        <span class="env-version-size">~2.5 GB（需要 NVIDIA 显卡和 CUDA）</span>
+                      </div>
+                      <div class="env-version-status">
+                        <span v-if="sensevoiceStatus.gpu_env.ready && sensevoiceStatus.active_env === 'gpu'" class="status-tag active">使用中</span>
+                        <span v-else-if="sensevoiceStatus.gpu_env.ready" class="status-tag ready">已安装</span>
+                        <span v-else-if="sensevoiceStatus.gpu_env.installed" class="status-tag pending">依赖不完整</span>
+                        <span v-else class="status-tag">未安装</span>
+                      </div>
+                    </div>
+                    <div class="env-version-actions">
+                      <template v-if="sensevoiceStatus.gpu_env.ready">
+                        <el-button 
+                          v-if="sensevoiceStatus.active_env !== 'gpu'"
+                          size="small" 
+                          type="primary"
+                          :disabled="isInstallingSensevoice"
+                          @click="switchSensevoiceVersion(true)"
+                        >
+                          切换使用
+                        </el-button>
+                        <el-button 
+                          size="small" 
+                          type="danger" 
+                          plain
+                          :disabled="isInstallingSensevoice"
+                          @click="uninstallSensevoiceByType(true)"
+                        >
+                          卸载
+                        </el-button>
+                      </template>
+                      <template v-else>
+                        <el-button 
+                          size="small" 
+                          type="success"
+                          :disabled="isInstallingSensevoice || !sensevoiceStatus.uv_installed"
+                          @click="installSensevoice(true)"
+                        >
+                          {{ isInstallingSensevoice && sensevoiceInstallType === 'gpu' ? '安装中...' : '安装' }}
+                        </el-button>
+                      </template>
+                    </div>
+                  </div>
+                  
                   <!-- CPU 版本卡片 -->
                   <div class="env-version-card" :class="{ 'is-active': sensevoiceStatus.active_env === 'cpu' && sensevoiceStatus.cpu_env.ready }">
                     <div class="env-version-header">
@@ -1040,9 +1091,8 @@ const shortcutCategories = computed(() => {
                         <span class="env-version-size">~200 MB</span>
                       </div>
                       <div class="env-version-status">
-                        <span v-if="sensevoiceStatus.cpu_env.ready" class="status-tag ready">
-                          {{ sensevoiceStatus.active_env === 'cpu' ? '使用中' : '已安装' }}
-                        </span>
+                        <span v-if="sensevoiceStatus.cpu_env.ready && sensevoiceStatus.active_env === 'cpu'" class="status-tag active">使用中</span>
+                        <span v-else-if="sensevoiceStatus.cpu_env.ready" class="status-tag ready">已安装</span>
                         <span v-else-if="sensevoiceStatus.cpu_env.installed" class="status-tag pending">依赖不完整</span>
                         <span v-else class="status-tag">未安装</span>
                       </div>
@@ -1076,58 +1126,6 @@ const shortcutCategories = computed(() => {
                           @click="installSensevoice(false)"
                         >
                           {{ isInstallingSensevoice && sensevoiceInstallType === 'cpu' ? '安装中...' : '安装' }}
-                        </el-button>
-                      </template>
-                    </div>
-                  </div>
-                  
-                  <!-- GPU 版本卡片（仅在支持 CUDA 时显示） -->
-                  <div v-if="supportsCuda" class="env-version-card" :class="{ 'is-active': sensevoiceStatus.active_env === 'gpu' && sensevoiceStatus.gpu_env.ready, 'is-recommended': !sensevoiceStatus.gpu_env.ready && !sensevoiceStatus.cpu_env.ready }">
-                    <div class="env-version-header">
-                      <div class="env-version-info">
-                        <span class="env-version-name">
-                          GPU 版本
-                          <span v-if="!sensevoiceStatus.gpu_env.ready && !sensevoiceStatus.cpu_env.ready" class="recommended-tag">推荐</span>
-                        </span>
-                        <span class="env-version-size">~2.5 GB（需要 NVIDIA 显卡和 CUDA）</span>
-                      </div>
-                      <div class="env-version-status">
-                        <span v-if="sensevoiceStatus.gpu_env.ready" class="status-tag ready">
-                          {{ sensevoiceStatus.active_env === 'gpu' ? '使用中' : '已安装' }}
-                        </span>
-                        <span v-else-if="sensevoiceStatus.gpu_env.installed" class="status-tag pending">依赖不完整</span>
-                        <span v-else class="status-tag">未安装</span>
-                      </div>
-                    </div>
-                    <div class="env-version-actions">
-                      <template v-if="sensevoiceStatus.gpu_env.ready">
-                        <el-button 
-                          v-if="sensevoiceStatus.active_env !== 'gpu'"
-                          size="small" 
-                          type="primary"
-                          :disabled="isInstallingSensevoice"
-                          @click="switchSensevoiceVersion(true)"
-                        >
-                          切换使用
-                        </el-button>
-                        <el-button 
-                          size="small" 
-                          type="danger" 
-                          plain
-                          :disabled="isInstallingSensevoice"
-                          @click="uninstallSensevoiceByType(true)"
-                        >
-                          卸载
-                        </el-button>
-                      </template>
-                      <template v-else>
-                        <el-button 
-                          size="small" 
-                          :type="!sensevoiceStatus.gpu_env.ready && !sensevoiceStatus.cpu_env.ready ? 'success' : 'primary'"
-                          :disabled="isInstallingSensevoice || !sensevoiceStatus.uv_installed"
-                          @click="installSensevoice(true)"
-                        >
-                          {{ isInstallingSensevoice && sensevoiceInstallType === 'gpu' ? '安装中...' : '安装' }}
                         </el-button>
                       </template>
                     </div>
@@ -3128,6 +3126,12 @@ const shortcutCategories = computed(() => {
   border-radius: 10px;
   background: #f3f4f6;
   color: #6b7280;
+}
+
+.status-tag.active {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: #fff;
+  font-weight: 600;
 }
 
 .status-tag.ready {
