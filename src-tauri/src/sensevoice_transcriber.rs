@@ -677,12 +677,19 @@ fn write_transcription_script() -> Result<(), String> {
 """SenseVoice 转录脚本 - 参考 jianchang512/sense-api 实现"""
 
 import sys
+import io
 import json
 import re
 import argparse
 import os
 import tempfile
 import time
+
+# Windows 上强制使用 UTF-8 编码
+if sys.platform == 'win32':
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+
 from pydub import AudioSegment
 
 def emit_progress(current, total, status, message=""):
@@ -695,7 +702,8 @@ def emit_progress(current, total, status, message=""):
         "status": status,
         "message": message
     }
-    print(json.dumps(progress, ensure_ascii=False), file=sys.stderr, flush=True)
+    sys.stderr.write(json.dumps(progress, ensure_ascii=False) + '\n')
+    sys.stderr.flush()
 
 def clean_text(text):
     """清理特殊标签和不需要的字符"""
@@ -917,13 +925,36 @@ pub async fn transcribe_with_sensevoice(
     use std::process::Stdio;
     use std::io::{BufRead, BufReader};
     
+    #[cfg(target_os = "windows")]
+    let mut child = {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        Command::new(&python_path)
+            .args([
+                "-u",  // 强制无缓冲模式
+                script_path.to_str().unwrap(),
+                &audio_path,
+                "--language", lang_code,
+                "--output", output_path.to_str().unwrap(),
+            ])
+            .env("PYTHONUNBUFFERED", "1")
+            .stderr(Stdio::piped())
+            .stdout(Stdio::piped())
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|e| format!("执行转录脚本失败: {}", e))?
+    };
+    
+    #[cfg(not(target_os = "windows"))]
     let mut child = Command::new(&python_path)
         .args([
+            "-u",  // 强制无缓冲模式
             script_path.to_str().unwrap(),
             &audio_path,
             "--language", lang_code,
             "--output", output_path.to_str().unwrap(),
         ])
+        .env("PYTHONUNBUFFERED", "1")
         .stderr(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
