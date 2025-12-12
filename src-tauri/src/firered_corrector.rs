@@ -51,6 +51,32 @@ pub struct FireRedEnvStatus {
     pub is_gpu: bool,
 }
 
+/// FireRedASR 模型信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FireRedModelInfo {
+    pub name: String,
+    pub size: String,
+    pub downloaded: bool,
+    pub partial_size: Option<u64>,
+}
+
+/// FireRedASR 模型文件信息
+struct ModelFileInfo {
+    name: &'static str,
+    size: u64,
+    is_lfs: bool,
+}
+
+/// FireRedASR-AED-L 模型需要下载的文件列表
+const FIRERED_AED_L_FILES: &[ModelFileInfo] = &[
+    ModelFileInfo { name: "model.pth.tar", size: 4678597714, is_lfs: true },
+    ModelFileInfo { name: "train_bpe1000.model", size: 251707, is_lfs: true },
+    ModelFileInfo { name: "cmvn.ark", size: 1311, is_lfs: true },
+    ModelFileInfo { name: "dict.txt", size: 71448, is_lfs: false },
+    ModelFileInfo { name: "cmvn.txt", size: 2985, is_lfs: false },
+    ModelFileInfo { name: "configuration.json", size: 86, is_lfs: false },
+];
+
 /// 校正结果条目
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CorrectionEntry {
@@ -179,6 +205,344 @@ pub fn get_firered_env_dir() -> Result<PathBuf, String> {
             Ok(cpu_dir)
         }
     }
+}
+
+/// 获取 FireRedASR 模型缓存目录
+pub fn get_firered_model_dir() -> Result<PathBuf, String> {
+    let home_dir = dirs::home_dir()
+        .ok_or_else(|| "Failed to get home directory".to_string())?;
+    
+    // 使用与 ModelScope 兼容的缓存目录
+    let model_dir = home_dir.join(".cache").join("modelscope").join("hub").join("FireRedTeam");
+    
+    Ok(model_dir)
+}
+
+/// 获取模型文件路径（检查多种可能的路径格式）
+fn get_firered_model_path(model_name: &str) -> Result<PathBuf, String> {
+    let home_dir = dirs::home_dir()
+        .ok_or_else(|| "Failed to get home directory".to_string())?;
+    
+    let hub_dir = home_dir.join(".cache").join("modelscope").join("hub");
+    
+    // 路径格式1: ~/.cache/modelscope/hub/FireRedTeam/FireRedASR-AED-L
+    let path1 = hub_dir.join("FireRedTeam").join(model_name);
+    if path1.exists() {
+        return Ok(path1);
+    }
+    
+    // 路径格式2: ~/.cache/modelscope/hub/models/FireRedTeam/FireRedASR-AED-L (Mac 上的路径)
+    let path2 = hub_dir.join("models").join("FireRedTeam").join(model_name);
+    if path2.exists() {
+        return Ok(path2);
+    }
+    
+    // 路径格式3: ~/.cache/modelscope/hub/models--FireRedTeam--FireRedASR-AED-L/snapshots/xxx
+    let models_dir = hub_dir.join(format!("models--FireRedTeam--{}", model_name));
+    if models_dir.exists() {
+        let snapshots_dir = models_dir.join("snapshots");
+        if snapshots_dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(&snapshots_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        return Ok(path);
+                    }
+                }
+            }
+        }
+        return Ok(models_dir);
+    }
+    
+    // 默认返回路径格式1（用于新下载）
+    Ok(path1)
+}
+
+/// 检查 FireRedASR 模型是否已下载
+pub fn is_firered_model_downloaded(model_name: &str) -> bool {
+    let home_dir = match dirs::home_dir() {
+        Some(dir) => dir,
+        None => return false,
+    };
+    
+    let hub_dir = home_dir.join(".cache").join("modelscope").join("hub");
+    
+    // 检查路径格式1
+    let path1 = hub_dir.join("FireRedTeam").join(model_name);
+    if check_firered_model_files_exist(&path1) {
+        return true;
+    }
+    
+    // 检查路径格式2
+    let path2 = hub_dir.join("models").join("FireRedTeam").join(model_name);
+    if check_firered_model_files_exist(&path2) {
+        return true;
+    }
+    
+    // 检查路径格式3
+    let models_dir = hub_dir.join(format!("models--FireRedTeam--{}", model_name));
+    if models_dir.exists() {
+        let snapshots_dir = models_dir.join("snapshots");
+        if snapshots_dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(&snapshots_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() && check_firered_model_files_exist(&path) {
+                        return true;
+                    }
+                }
+            }
+        }
+        if check_firered_model_files_exist(&models_dir) {
+            return true;
+        }
+    }
+    
+    false
+}
+
+/// 检查模型文件是否存在
+fn check_firered_model_files_exist(model_path: &std::path::Path) -> bool {
+    if !model_path.exists() {
+        return false;
+    }
+    
+    // 检查主要模型文件是否存在
+    let model_pth = model_path.join("model.pth.tar");
+    let config = model_path.join("configuration.json");
+    
+    model_pth.exists() && config.exists()
+}
+
+/// 获取已下载的部分大小
+pub fn get_firered_partial_size(model_name: &str) -> u64 {
+    let model_path = match get_firered_model_path(model_name) {
+        Ok(path) => path,
+        Err(_) => return 0,
+    };
+    
+    let mut total_partial = 0u64;
+    
+    // 检查已下载的文件大小
+    for file_info in FIRERED_AED_L_FILES {
+        let file_path = model_path.join(file_info.name);
+        let part_path = model_path.join(format!("{}.part", file_info.name));
+        
+        if file_path.exists() {
+            if let Ok(meta) = std::fs::metadata(&file_path) {
+                total_partial += meta.len();
+            }
+        } else if part_path.exists() {
+            if let Ok(meta) = std::fs::metadata(&part_path) {
+                total_partial += meta.len();
+            }
+        }
+    }
+    
+    total_partial
+}
+
+/// 获取 FireRedASR 可用模型列表
+pub fn get_firered_models() -> Vec<FireRedModelInfo> {
+    let downloaded = is_firered_model_downloaded("FireRedASR-AED-L");
+    let partial_size = if !downloaded {
+        let size = get_firered_partial_size("FireRedASR-AED-L");
+        if size > 0 { Some(size) } else { None }
+    } else {
+        None
+    };
+    
+    vec![
+        FireRedModelInfo {
+            name: "FireRedASR-AED-L".to_string(),
+            size: "~4.4 GB".to_string(),
+            downloaded,
+            partial_size,
+        },
+    ]
+}
+
+/// 下载 FireRedASR 模型（支持断点续传）
+pub async fn download_firered_model(model_name: &str, window: Window) -> Result<String, String> {
+    use std::fs::{self, OpenOptions};
+    use std::io::Write;
+    
+    reset_cancellation();
+    
+    // 检查环境是否就绪
+    let env_status = check_firered_env();
+    if !env_status.ready {
+        return Err("FireRedASR 环境未安装，请先安装环境".to_string());
+    }
+    
+    // 检查是否已下载
+    if is_firered_model_downloaded(model_name) {
+        return Ok(format!("{} 模型已下载", model_name));
+    }
+    
+    let model_path = get_firered_model_path(model_name)?;
+    
+    // 创建模型目录
+    if !model_path.exists() {
+        fs::create_dir_all(&model_path)
+            .map_err(|e| format!("创建模型目录失败: {}", e))?;
+    }
+    
+    // 计算总大小
+    let total_size: u64 = FIRERED_AED_L_FILES.iter().map(|f| f.size).sum();
+    let mut downloaded_total: u64 = 0;
+    
+    // 发送初始进度
+    let _ = window.emit("firered-model-progress", FireRedProgress {
+        progress: 0.0,
+        current_text: "0.0%".to_string(),
+        status: "downloading".to_string(),
+    });
+    
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+    
+    // 下载每个文件
+    for file_info in FIRERED_AED_L_FILES.iter() {
+        let file_path = model_path.join(file_info.name);
+        let part_path = model_path.join(format!("{}.part", file_info.name));
+        
+        // 如果文件已存在且大小正确，跳过
+        if file_path.exists() {
+            if let Ok(meta) = fs::metadata(&file_path) {
+                if meta.len() == file_info.size {
+                    downloaded_total += file_info.size;
+                    continue;
+                }
+            }
+        }
+        
+        // 检查部分下载
+        let existing_size = if part_path.exists() {
+            fs::metadata(&part_path).map(|m| m.len()).unwrap_or(0)
+        } else {
+            0
+        };
+        
+        // 构建下载 URL
+        let download_url = format!(
+            "https://modelscope.cn/models/FireRedTeam/{}/resolve/master/{}",
+            model_name, file_info.name
+        );
+        
+        // 发送进度
+        let progress = (downloaded_total as f32 / total_size as f32) * 100.0;
+        let _ = window.emit("firered-model-progress", FireRedProgress {
+            progress,
+            current_text: format!("{:.1}%", progress),
+            status: "downloading".to_string(),
+        });
+        
+        // 构建请求
+        let mut request = client.get(&download_url);
+        if existing_size > 0 {
+            request = request.header("Range", format!("bytes={}-", existing_size));
+        }
+        
+        let response = request.send().await
+            .map_err(|e| format!("下载 {} 失败: {}", file_info.name, e))?;
+        
+        let status = response.status();
+        let is_partial = status == reqwest::StatusCode::PARTIAL_CONTENT;
+        
+        if !status.is_success() && !is_partial {
+            return Err(format!("下载 {} 失败: HTTP {}", file_info.name, status));
+        }
+        
+        // 确定实际起始位置
+        let actual_start = if is_partial { existing_size } else {
+            if existing_size > 0 {
+                let _ = fs::remove_file(&part_path);
+            }
+            0
+        };
+        
+        // 打开文件
+        let (mut file, mut file_downloaded) = if actual_start > 0 {
+            let file = OpenOptions::new()
+                .append(true)
+                .open(&part_path)
+                .map_err(|e| format!("打开部分文件失败: {}", e))?;
+            (file, actual_start)
+        } else {
+            let file = fs::File::create(&part_path)
+                .map_err(|e| format!("创建文件失败: {}", e))?;
+            (file, 0u64)
+        };
+        
+        // 流式下载
+        let mut response = response;
+        while let Some(chunk) = response.chunk().await
+            .map_err(|e| format!("读取数据失败: {}", e))? 
+        {
+            // 检查是否取消
+            if is_cancelled() {
+                return Err("下载已取消".to_string());
+            }
+            
+            file.write_all(&chunk)
+                .map_err(|e| format!("写入文件失败: {}", e))?;
+            
+            file_downloaded += chunk.len() as u64;
+            
+            // 更新进度
+            let current_total = downloaded_total + file_downloaded;
+            let progress = (current_total as f32 / total_size as f32) * 100.0;
+            let _ = window.emit("firered-model-progress", FireRedProgress {
+                progress,
+                current_text: format!("{:.1}%", progress),
+                status: "downloading".to_string(),
+            });
+        }
+        
+        file.flush().map_err(|e| format!("刷新文件失败: {}", e))?;
+        drop(file);
+        
+        // 验证文件大小
+        let final_size = fs::metadata(&part_path).map(|m| m.len()).unwrap_or(0);
+        if final_size != file_info.size {
+            return Err(format!(
+                "文件 {} 下载不完整: 期望 {} 字节, 实际 {} 字节",
+                file_info.name, file_info.size, final_size
+            ));
+        }
+        
+        // 重命名为最终文件
+        fs::rename(&part_path, &file_path)
+            .map_err(|e| format!("重命名文件失败: {}", e))?;
+        
+        downloaded_total += file_info.size;
+    }
+    
+    // 发送完成进度
+    let _ = window.emit("firered-model-progress", FireRedProgress {
+        progress: 100.0,
+        current_text: "模型下载完成！".to_string(),
+        status: "completed".to_string(),
+    });
+    
+    Ok(format!("{} 模型下载成功", model_name))
+}
+
+/// 删除 FireRedASR 模型
+pub fn delete_firered_model(model_name: &str) -> Result<String, String> {
+    let model_path = get_firered_model_path(model_name)?;
+    
+    if !model_path.exists() {
+        return Err(format!("模型 {} 未下载", model_name));
+    }
+    
+    std::fs::remove_dir_all(&model_path)
+        .map_err(|e| format!("删除模型失败: {}", e))?;
+    
+    Ok(format!("模型 {} 已删除", model_name))
 }
 
 /// 获取 Python 脚本目录
@@ -530,12 +894,12 @@ pub async fn install_firered_env(window: Window, use_gpu: bool) -> Result<String
         status: "installing".to_string(),
     });
     
-    // 安装 fireredasr 及依赖
+    // 安装 fireredasr 及依赖（包含 modelscope 用于从国内源下载模型）
     let output = Command::new(&uv_path)
         .args([
             "pip", "install",
             "--python", python_path.to_str().unwrap(),
-            "fireredasr", "pydub", "transformers", "sentencepiece"
+            "fireredasr", "pydub", "transformers", "sentencepiece", "modelscope"
         ])
         .output()
         .map_err(|e| format!("安装 FireRedASR 失败: {}", e))?;
@@ -550,30 +914,7 @@ pub async fn install_firered_env(window: Window, use_gpu: bool) -> Result<String
     }
     
     let _ = window.emit("firered-progress", FireRedProgress {
-        progress: 75.0,
-        current_text: "正在下载 FireRedASR 模型（约 600MB，请耐心等待）...".to_string(),
-        status: "installing".to_string(),
-    });
-    
-    // 预下载模型
-    let output = Command::new(&python_path)
-        .args(["-c", r#"
-from fireredasr.models.fireredasr import FireRedAsr
-print('Downloading model...')
-model = FireRedAsr.from_pretrained('aed')
-print('Model downloaded successfully')
-"#])
-        .output()
-        .map_err(|e| format!("下载模型失败: {}", e))?;
-    
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        // 模型下载失败不阻止安装完成，只是警告
-        eprintln!("模型预下载失败（首次使用时会自动下载）: {}", stderr);
-    }
-    
-    let _ = window.emit("firered-progress", FireRedProgress {
-        progress: 90.0,
+        progress: 85.0,
         current_text: "正在配置校正脚本...".to_string(),
         status: "installing".to_string(),
     });
@@ -730,9 +1071,12 @@ def correct_subtitles(srt_path, audio_path, language="zh", preserve_case=True):
     # 加载音频
     audio = AudioSegment.from_file(audio_path)
     
-    # 加载模型 (aed = Attention Encoder Decoder, 速度快精度高)
+    # 加载模型 (使用本地已下载的模型)
     print("正在加载 FireRedASR 模型...", file=sys.stderr)
-    model = FireRedAsr.from_pretrained("aed")
+    model_dir = get_firered_model_path()
+    if not os.path.exists(model_dir):
+        raise RuntimeError(f"模型未下载，请先在设置中下载 FireRedASR-AED-L 模型")
+    model = FireRedAsr.from_pretrained(model_dir)
     
     # 创建临时目录
     tmp_dir = tempfile.mkdtemp()
@@ -1033,6 +1377,35 @@ AUDIO_CACHE = {}
 # 最大缓存数量
 MAX_CACHE_SIZE = 3
 
+def get_firered_model_path():
+    """获取 FireRedASR 模型路径"""
+    home = os.path.expanduser("~")
+    hub_dir = os.path.join(home, ".cache", "modelscope", "hub")
+    
+    # 路径格式1: ~/.cache/modelscope/hub/FireRedTeam/FireRedASR-AED-L
+    path1 = os.path.join(hub_dir, "FireRedTeam", "FireRedASR-AED-L")
+    if os.path.exists(path1):
+        return path1
+    
+    # 路径格式2: ~/.cache/modelscope/hub/models/FireRedTeam/FireRedASR-AED-L
+    path2 = os.path.join(hub_dir, "models", "FireRedTeam", "FireRedASR-AED-L")
+    if os.path.exists(path2):
+        return path2
+    
+    # 路径格式3: ~/.cache/modelscope/hub/models--FireRedTeam--FireRedASR-AED-L/snapshots/xxx
+    models_dir = os.path.join(hub_dir, "models--FireRedTeam--FireRedASR-AED-L")
+    if os.path.exists(models_dir):
+        snapshots_dir = os.path.join(models_dir, "snapshots")
+        if os.path.exists(snapshots_dir):
+            for entry in os.listdir(snapshots_dir):
+                entry_path = os.path.join(snapshots_dir, entry)
+                if os.path.isdir(entry_path):
+                    return entry_path
+        return models_dir
+    
+    # 默认返回路径格式1
+    return path1
+
 def load_model():
     global MODEL
     if MODEL is None:
@@ -1041,7 +1414,10 @@ def load_model():
         torch.serialization.add_safe_globals([argparse.Namespace])
         from fireredasr.models.fireredasr import FireRedAsr
         print("Loading FireRedASR model...", file=sys.stderr)
-        MODEL = FireRedAsr.from_pretrained("aed")
+        model_dir = get_firered_model_path()
+        if not os.path.exists(model_dir):
+            raise RuntimeError(f"模型未下载，请先在设置中下载 FireRedASR-AED-L 模型")
+        MODEL = FireRedAsr.from_pretrained(model_dir)
         print("Model loaded!", file=sys.stderr)
     return MODEL
 

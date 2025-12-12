@@ -22,7 +22,8 @@ use firered_corrector::{
     uninstall_firered_env, uninstall_firered_env_by_type, switch_firered_env,
     cancel_firered_correction, preload_firered_service, is_service_running,
     preload_audio_for_correction,
-    FireRedEnvStatus, CorrectionEntry, SingleCorrectionResult,
+    get_firered_models, download_firered_model, delete_firered_model,
+    FireRedEnvStatus, CorrectionEntry, SingleCorrectionResult, FireRedModelInfo,
 };
 use waveform_generator::{generate_waveform_with_progress, ProgressCallback};
 use std::fs;
@@ -326,6 +327,24 @@ fn is_firered_service_running() -> bool {
 #[tauri::command]
 async fn preload_audio_for_firered(audio_path: String) -> Result<String, String> {
     preload_audio_for_correction(audio_path).await
+}
+
+/// 获取 FireRedASR 可用模型列表
+#[tauri::command]
+fn get_firered_models_cmd() -> Vec<FireRedModelInfo> {
+    get_firered_models()
+}
+
+/// 下载 FireRedASR 模型
+#[tauri::command]
+async fn download_firered_model_cmd(window: tauri::Window, model_name: String) -> Result<String, String> {
+    download_firered_model(&model_name, window).await
+}
+
+/// 删除 FireRedASR 模型
+#[tauri::command]
+fn delete_firered_model_cmd(model_name: String) -> Result<String, String> {
+    delete_firered_model(&model_name)
 }
 
 /// 校正单条字幕
@@ -1016,6 +1035,9 @@ pub fn run() {
             uninstall_firered_by_type,
             switch_firered,
             cancel_firered_task,
+            get_firered_models_cmd,
+            download_firered_model_cmd,
+            delete_firered_model_cmd,
             // 导出功能
             export_txt,
             export_vtt,

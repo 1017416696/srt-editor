@@ -301,6 +301,14 @@ const isInstallingSensevoice = ref(false)
 const sensevoiceProgress = ref(0)
 const sensevoiceMessage = ref('')
 
+// FireRedASR 模型信息
+interface FireRedModelInfo {
+  name: string
+  size: string
+  downloaded: boolean
+  partial_size: number | null
+}
+
 // FireRedASR 相关
 const fireredStatus = ref<FireRedEnvStatus>({ 
   uv_installed: false, 
@@ -312,6 +320,10 @@ const fireredStatus = ref<FireRedEnvStatus>({
   is_gpu: false
 })
 const fireredInstallType = ref<'cpu' | 'gpu'>('cpu')  // 当前要安装的版本类型
+const fireredModels = ref<FireRedModelInfo[]>([])
+const downloadingFireredModel = ref<string | null>(null)
+const fireredModelProgress = ref(0)
+const fireredModelMessage = ref('')
 const isInstallingFirered = ref(false)
 const fireredProgress = ref(0)
 const fireredMessage = ref('')
@@ -345,6 +357,14 @@ const fetchFireredStatus = async () => {
     fireredStatus.value = await invoke<FireRedEnvStatus>('check_firered_env_status')
   } catch (e) {
     console.error('Failed to fetch firered status:', e)
+  }
+}
+
+const fetchFireredModels = async () => {
+  try {
+    fireredModels.value = await invoke<FireRedModelInfo[]>('get_firered_models_cmd')
+  } catch (e) {
+    console.error('Failed to fetch firered models:', e)
   }
 }
 
@@ -472,6 +492,52 @@ const deleteSensevoiceModel = async (modelName: string) => {
     })
     await invoke('delete_sensevoice_model_cmd', { modelName })
     await fetchSensevoiceModels()
+    ElMessage.success(`模型 ${modelName} 已删除`)
+  } catch (e) {
+    if (e !== 'cancel') {
+      ElMessage.error(`删除失败：${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+}
+
+// FireRedASR 模型下载
+const downloadFireredModel = async (modelName: string) => {
+  if (!fireredStatus.value.ready) {
+    ElMessage.warning('请先安装 FireRedASR 环境')
+    return
+  }
+  
+  downloadingFireredModel.value = modelName
+  fireredModelProgress.value = 0
+  fireredModelMessage.value = '准备下载...'
+  
+  const unlisten = await listen<{ progress: number; current_text: string }>('firered-model-progress', (event) => {
+    fireredModelProgress.value = event.payload.progress
+    fireredModelMessage.value = event.payload.current_text
+  })
+  
+  try {
+    await invoke('download_firered_model_cmd', { modelName })
+    await fetchFireredModels()
+    ElMessage.success(`模型 ${modelName} 下载完成`)
+  } catch (error) {
+    ElMessage.error(`下载失败：${error instanceof Error ? error.message : String(error)}`)
+  } finally {
+    downloadingFireredModel.value = null
+    unlisten()
+  }
+}
+
+// FireRedASR 模型删除
+const deleteFireredModel = async (modelName: string) => {
+  try {
+    await ElMessageBox.confirm(`确定要删除模型 ${modelName} 吗？`, '删除确认', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    await invoke('delete_firered_model_cmd', { modelName })
+    await fetchFireredModels()
     ElMessage.success(`模型 ${modelName} 已删除`)
   } catch (e) {
     if (e !== 'cancel') {
@@ -661,6 +727,7 @@ const setupWhisperListener = async () => {
   await fetchSensevoiceStatus()
   await fetchSensevoiceModels()
   await fetchFireredStatus()
+  await fetchFireredModels()
   // 使用专门的 model-download-progress 事件，避免与转录进度冲突
   unlistenProgress = await listen<{ progress: number; current_text: string }>('model-download-progress', (event) => {
     downloadProgress.value = event.payload.progress
@@ -1361,8 +1428,73 @@ const shortcutCategories = computed(() => {
                     </div>
                   </div>
                   
-                  <!-- FireRedASR 校正选项（仅在有环境就绪时显示） -->
+                  <!-- FireRedASR 模型（仅在有环境就绪时显示） -->
                   <template v-if="fireredStatus.ready">
+                    <div class="sensevoice-models-section">
+                      <div class="section-subtitle">模型</div>
+                      <div 
+                        v-for="model in fireredModels"
+                        :key="model.name"
+                        class="model-card single-model"
+                        :class="{ 
+                          'is-selected': model.downloaded,
+                          'is-downloaded': model.downloaded,
+                          'is-downloading': downloadingFireredModel === model.name
+                        }"
+                      >
+                        <div class="model-card-header">
+                          <div class="model-select-indicator">
+                            <span class="select-dot" :class="{ 
+                              active: model.downloaded,
+                              disabled: !model.downloaded 
+                            }"></span>
+                          </div>
+                          <span class="model-name">{{ model.name }}</span>
+                        </div>
+                        <span class="model-size">{{ model.size }}</span>
+                        <div class="model-card-actions" @click.stop>
+                          <template v-if="downloadingFireredModel === model.name">
+                            <div class="download-progress-inline">
+                              <el-progress :percentage="Math.round(fireredModelProgress)" :stroke-width="4" />
+                            </div>
+                          </template>
+                          <template v-else>
+                            <template v-if="!model.downloaded">
+                              <el-button 
+                                v-if="model.partial_size"
+                                size="small" 
+                                type="success" 
+                                :disabled="!!downloadingFireredModel" 
+                                @click="downloadFireredModel(model.name)"
+                              >
+                                继续下载
+                              </el-button>
+                              <el-button 
+                                v-else
+                                size="small" 
+                                type="primary" 
+                                :disabled="!!downloadingFireredModel" 
+                                @click="downloadFireredModel(model.name)"
+                              >
+                                下载
+                              </el-button>
+                            </template>
+                            <el-button 
+                              v-else 
+                              size="small" 
+                              type="danger" 
+                              plain 
+                              :disabled="!!downloadingFireredModel" 
+                              @click="deleteFireredModel(model.name)"
+                            >
+                              卸载
+                            </el-button>
+                          </template>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <!-- FireRedASR 校正选项 -->
                     <div class="engine-options">
                       <div class="option-row">
                         <div class="option-info">
