@@ -71,11 +71,86 @@ sudo apt install cmake build-essential
 ```
 
 **Windows:**
-从 [CMake 官网](https://cmake.org/download/) 下载安装程序。
+从 [CMake 官网](https://cmake.org/download/) 下载 MSI 安装程序，安装时勾选 "Add CMake to the system PATH"。
 
 验证安装：
 ```bash
 cmake --version
+```
+
+## Windows 特别说明
+
+Windows 用户在运行本项目前，需要完成以下额外配置：
+
+### 1. 安装 Visual Studio Build Tools
+
+Tauri 和 Whisper.cpp 需要 C++ 编译工具链。
+
+下载并安装 [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)，安装时勾选：
+- "使用 C++ 的桌面开发" 工作负载
+- Windows 10/11 SDK
+
+### 2. 安装 CMake
+
+从 [CMake 官网](https://cmake.org/download/) 下载 Windows MSI 安装包（如 `cmake-3.31.2-windows-x86_64.msi`）。
+
+安装时务必勾选 "Add CMake to the system PATH for all users"。
+
+安装后需要重启 CMD 或手动添加环境变量：
+```cmd
+set PATH=%PATH%;C:\Program Files\CMake\bin
+```
+
+### 3. 安装 rustfmt
+
+```cmd
+rustup component add rustfmt
+```
+
+如果下载超时，可配置国内镜像或使用代理：
+```cmd
+:: 使用代理（将 7890 替换为你的代理端口）
+set http_proxy=http://127.0.0.1:7890
+set https_proxy=http://127.0.0.1:7890
+rustup component add rustfmt
+```
+
+### 4. 网络问题处理
+
+如果遇到 Rust 组件下载失败，可以配置清华镜像。在 CMD 中设置环境变量：
+```cmd
+set RUSTUP_DIST_SERVER=https://mirrors.tuna.tsinghua.edu.cn/rustup
+set RUSTUP_UPDATE_ROOT=https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup
+```
+
+对于 Cargo 依赖，编辑 `%USERPROFILE%\.cargo\config.toml`：
+```toml
+[source.crates-io]
+replace-with = 'ustc'
+
+[source.ustc]
+registry = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"
+```
+
+### 5. 常见 Windows 错误
+
+**错误：`is 'cmake' not installed?`**
+
+CMake 已安装但 PATH 未生效。关闭 CMD 重新打开，或手动设置：
+```cmd
+set PATH=%PATH%;C:\Program Files\CMake\bin
+```
+
+**错误：`rustfmt.exe is not installed`**
+
+运行 `rustup component add rustfmt`，如有网络问题参考上方代理配置。
+
+**错误：路径包含中文或旧路径缓存**
+
+清理 Tauri 构建缓存后重试：
+```cmd
+rmdir /s /q src-tauri\target
+pnpm tauri dev
 ```
 
 ### 4. 安装 Tauri 系统依赖
