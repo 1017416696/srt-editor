@@ -104,21 +104,109 @@ fn check_uv_installed() -> bool {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         
-        Command::new("uv")
+        // 先尝试 PATH 中的 uv
+        let path_check = Command::new("uv")
+            .arg("--version")
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        
+        if path_check {
+            return true;
+        }
+        
+        // 检查默认安装路径 %USERPROFILE%\.local\bin\uv.exe
+        if let Some(home) = std::env::var_os("USERPROFILE") {
+            let uv_path = std::path::PathBuf::from(home).join(".local").join("bin").join("uv.exe");
+            if uv_path.exists() {
+                return Command::new(&uv_path)
+                    .arg("--version")
+                    .creation_flags(CREATE_NO_WINDOW)
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false);
+            }
+        }
+        
+        false
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        // 先尝试 PATH 中的 uv
+        let path_check = Command::new("uv")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        
+        if path_check {
+            return true;
+        }
+        
+        // 检查默认安装路径 ~/.local/bin/uv
+        if let Some(home) = std::env::var_os("HOME") {
+            let uv_path = std::path::PathBuf::from(home).join(".local").join("bin").join("uv");
+            if uv_path.exists() {
+                return Command::new(&uv_path)
+                    .arg("--version")
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false);
+            }
+        }
+        
+        false
+    }
+}
+
+/// 获取 uv 可执行文件路径
+fn get_uv_path() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        
+        // 先检查 PATH 中的 uv
+        if Command::new("uv")
             .arg("--version")
             .creation_flags(CREATE_NO_WINDOW)
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)
+        {
+            return Some(PathBuf::from("uv"));
+        }
+        // 检查默认安装路径
+        if let Some(home) = std::env::var_os("USERPROFILE") {
+            let uv_path = PathBuf::from(home).join(".local").join("bin").join("uv.exe");
+            if uv_path.exists() {
+                return Some(uv_path);
+            }
+        }
+        None
     }
     
     #[cfg(not(target_os = "windows"))]
     {
-        Command::new("uv")
+        // 先检查 PATH 中的 uv
+        if Command::new("uv")
             .arg("--version")
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)
+        {
+            return Some(PathBuf::from("uv"));
+        }
+        // 检查默认安装路径
+        if let Some(home) = std::env::var_os("HOME") {
+            let uv_path = PathBuf::from(home).join(".local").join("bin").join("uv");
+            if uv_path.exists() {
+                return Some(uv_path);
+            }
+        }
+        None
     }
 }
 
@@ -169,10 +257,9 @@ pub fn check_sensevoice_env() -> SenseVoiceEnvStatus {
 pub async fn install_sensevoice_env(window: Window) -> Result<String, String> {
     reset_cancellation();
     
-    // 检查 uv 是否安装
-    if !check_uv_installed() {
-        return Err("请先安装 uv 包管理器。访问 https://docs.astral.sh/uv/getting-started/installation/ 了解安装方法".to_string());
-    }
+    // 获取 uv 路径
+    let uv_path = get_uv_path()
+        .ok_or("请先安装 uv 包管理器。访问 https://docs.astral.sh/uv/getting-started/installation/ 了解安装方法")?;
     
     let env_dir = get_sensevoice_env_dir()?;
     
@@ -188,7 +275,7 @@ pub async fn install_sensevoice_env(window: Window) -> Result<String, String> {
     }
     
     // 创建虚拟环境
-    let output = Command::new("uv")
+    let output = Command::new(&uv_path)
         .args(["venv", env_dir.to_str().unwrap(), "--python", "3.11"])
         .output()
         .map_err(|e| format!("创建虚拟环境失败: {}", e))?;
@@ -211,7 +298,7 @@ pub async fn install_sensevoice_env(window: Window) -> Result<String, String> {
     
     // 安装 PyTorch (CPU 版本，体积较小)
     let python_path = get_python_path()?;
-    let output = Command::new("uv")
+    let output = Command::new(&uv_path)
         .args([
             "pip", "install",
             "--python", python_path.to_str().unwrap(),
@@ -238,7 +325,7 @@ pub async fn install_sensevoice_env(window: Window) -> Result<String, String> {
     });
     
     // 安装 funasr
-    let output = Command::new("uv")
+    let output = Command::new(&uv_path)
         .args([
             "pip", "install",
             "--python", python_path.to_str().unwrap(),

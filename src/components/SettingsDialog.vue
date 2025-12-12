@@ -288,6 +288,16 @@ const fetchFireredStatus = async () => {
   }
 }
 
+// 重新检测 uv 安装状态
+const recheckUvStatus = async () => {
+  await Promise.all([fetchSensevoiceStatus(), fetchFireredStatus()])
+  if (sensevoiceStatus.value.uv_installed || fireredStatus.value.uv_installed) {
+    ElMessage.success('检测到 uv 已安装')
+  } else {
+    ElMessage.warning('未检测到 uv，请确认已安装并重启应用')
+  }
+}
+
 const installSensevoice = async () => {
   if (!sensevoiceStatus.value.uv_installed) {
     ElMessage.warning('请先安装 uv 包管理器')
@@ -895,6 +905,7 @@ const shortcutCategories = computed(() => {
                 <div v-if="!sensevoiceStatus.uv_installed" class="env-warning">
                   <span class="warning-icon">⚠️</span>
                   <span>需要先安装 <a href="https://docs.astral.sh/uv/getting-started/installation/" target="_blank">uv 包管理器</a></span>
+                  <el-button size="small" type="primary" link @click="recheckUvStatus">重新检测</el-button>
                 </div>
                 
                 <div v-if="isInstallingSensevoice" class="install-progress-card">
@@ -957,6 +968,7 @@ const shortcutCategories = computed(() => {
                 <div v-if="!fireredStatus.uv_installed" class="env-warning">
                   <span class="warning-icon">⚠️</span>
                   <span>需要先安装 <a href="https://docs.astral.sh/uv/getting-started/installation/" target="_blank">uv 包管理器</a></span>
+                  <el-button size="small" type="primary" link @click="recheckUvStatus">重新检测</el-button>
                 </div>
                 
                 <div v-if="isInstallingFirered" class="install-progress-card">

@@ -15,7 +15,6 @@ declare module 'vue' {
     CorrectionCompareDialog: typeof import('./src/components/CorrectionCompareDialog.vue')['default']
     DictionaryPreviewDialog: typeof import('./src/components/DictionaryPreviewDialog.vue')['default']
     EditorSidebar: typeof import('./src/components/editor/EditorSidebar.vue')['default']
-    FpsSelectDialog: typeof import('./src/components/FpsSelectDialog.vue')['default']
     GreetComponent: typeof import('./src/components/GreetComponent.vue')['default']
     QuickAddDictionaryDialog: typeof import('./src/components/QuickAddDictionaryDialog.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
