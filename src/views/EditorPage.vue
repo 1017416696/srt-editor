@@ -561,7 +561,7 @@ const handleApplyDictionary = async () => {
   }
   
   if (smartDictionary.totalCount === 0) {
-    ElMessage.warning('词典为空，请先添加词条或让系统自动学习')
+    ElMessage.warning('词典为空，请先添加词条')
     return
   }
   
