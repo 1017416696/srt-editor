@@ -703,15 +703,24 @@ def get_audio_duration(audio_path: str) -> float:
 def transcribe(audio_path: str, model_size: str, language: str, device: str = "auto", output_path: str = None):
     """转录音频文件，实时输出进度"""
     
+    import torch
+    
     # 确定设备
     if device == "auto":
-        import torch
         device = "cuda" if torch.cuda.is_available() else "cpu"
         compute_type = "float16" if device == "cuda" else "int8"
     elif device == "cuda":
         compute_type = "float16"
     else:
         compute_type = "int8"
+    
+    # 输出设备信息（包含 GPU 型号和显存）
+    if device == "cuda" and torch.cuda.is_available():
+        gpu_name = torch.cuda.get_device_name(0)
+        gpu_mem = torch.cuda.get_device_properties(0).total_memory / (1024**3)  # GB
+        log(f"DEVICE_INFO:cuda:{gpu_name}:{gpu_mem:.1f}GB")
+    else:
+        log("DEVICE_INFO:cpu::")
     
     # 输出加载状态
     log("STATUS:loading")
@@ -856,12 +865,6 @@ pub async fn transcribe_with_whisper(
     // 确定设备
     let device = if env_status.is_gpu { "cuda" } else { "cpu" };
     
-    // 记录开始日志
-    log::info!(
-        "开始语音转录: 音频文件={}, 模型=faster-whisper-{}, 语言={}, 设备={}",
-        audio_path, model_size, language, device
-    );
-    
     // 运行 Python 脚本，使用 Stdio::piped() 实时读取输出
     #[cfg(target_os = "windows")]
     let mut child = {
@@ -916,12 +919,35 @@ pub async fn transcribe_with_whisper(
     let transcribe_done_clone = transcribe_done.clone();
     let current_progress_clone = current_progress.clone();
     
+    // 用于日志的参数
+    let audio_path_for_log = audio_path.clone();
+    let model_size_for_log = model_size.clone();
+    let language_for_log = language.clone();
+    
     // 在后台线程读取 stdout，解析进度
     let stdout_handle = std::thread::spawn(move || {
         if let Some(stdout) = stdout {
             let reader = BufReader::new(stdout);
             for line in reader.lines().flatten() {
-                log::debug!("Whisper transcribe: {}", line);
+                // 解析 DEVICE_INFO:设备类型:GPU型号:显存 格式
+                if line.starts_with("DEVICE_INFO:") {
+                    let content = line.trim_start_matches("DEVICE_INFO:");
+                    let parts: Vec<&str> = content.splitn(3, ':').collect();
+                    let device_str = if parts.len() >= 2 && parts[0] == "cuda" && !parts[1].is_empty() {
+                        if parts.len() >= 3 && !parts[2].is_empty() {
+                            format!("CUDA ({}, {})", parts[1], parts[2])
+                        } else {
+                            format!("CUDA ({})", parts[1])
+                        }
+                    } else {
+                        "CPU".to_string()
+                    };
+                    log::info!(
+                        "开始语音转录: 音频文件={}, 模型=faster-whisper-{}, 语言={}, 设备={}",
+                        audio_path_for_log, model_size_for_log, language_for_log, device_str
+                    );
+                    continue;
+                }
                 
                 // 解析 DURATION:xxx 格式
                 if line.starts_with("DURATION:") {

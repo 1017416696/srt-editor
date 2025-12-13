@@ -1097,7 +1097,16 @@ def get_device():
         return "cuda"
     return "cpu"
 
+def get_device_info():
+    """获取设备信息，包含 GPU 型号和显存"""
+    if torch.cuda.is_available():
+        gpu_name = torch.cuda.get_device_name(0)
+        gpu_mem = torch.cuda.get_device_properties(0).total_memory / (1024**3)  # GB
+        return f"cuda:{gpu_name}:{gpu_mem:.1f}GB"
+    return "cpu::"
+
 DEVICE = get_device()
+DEVICE_INFO = get_device_info()
 
 def emit_progress(current, total, status, message=""):
     """输出进度信息到 stderr（JSON 格式）"""
@@ -1127,6 +1136,9 @@ def clean_text(text):
 def transcribe(audio_path, language="auto"):
     from funasr import AutoModel
     from funasr.utils.postprocess_utils import rich_transcription_postprocess
+    
+    # 输出设备信息（包含 GPU 型号）
+    print(f"DEVICE_INFO:{DEVICE_INFO}", flush=True)
     
     device_tag = "[GPU]" if DEVICE == "cuda" else "[CPU]"
     emit_progress(0, 100, "loading", f"{device_tag} 正在加载 SenseVoice 模型...")
@@ -1332,14 +1344,8 @@ pub async fn transcribe_with_sensevoice(
         _ => "auto",
     };
     
-    // 确定设备
-    let device = if env_status.is_gpu { "cuda" } else { "cpu" };
-    
-    // 记录开始日志
-    log::info!(
-        "开始语音转录: 音频文件={}, 模型=SenseVoiceSmall, 语言={}, 设备={}",
-        audio_path, lang_code, device
-    );
+    // 确定设备（用于传递给 Python 脚本，实际设备信息由 Python 返回）
+    let _device = if env_status.is_gpu { "cuda" } else { "cpu" };
     
     // 使用 spawn 启动进程，以便异步读取 stderr
     use std::process::Stdio;
@@ -1384,6 +1390,40 @@ pub async fn transcribe_with_sensevoice(
     let stderr = child.stderr.take()
         .ok_or_else(|| "无法获取 stderr".to_string())?;
     
+    // 获取 stdout 用于读取设备信息
+    let stdout = child.stdout.take();
+    
+    // 用于日志的参数
+    let audio_path_for_log = audio_path.clone();
+    let lang_code_for_log = lang_code.to_string();
+    
+    // 在后台线程读取 stdout，解析设备信息
+    let stdout_handle = std::thread::spawn(move || {
+        if let Some(stdout) = stdout {
+            let reader = BufReader::new(stdout);
+            for line in reader.lines().flatten() {
+                // 解析 DEVICE_INFO:设备类型:GPU型号:显存 格式
+                if line.starts_with("DEVICE_INFO:") {
+                    let content = line.trim_start_matches("DEVICE_INFO:");
+                    let parts: Vec<&str> = content.splitn(3, ':').collect();
+                    let device_str = if parts.len() >= 2 && parts[0] == "cuda" && !parts[1].is_empty() {
+                        if parts.len() >= 3 && !parts[2].is_empty() {
+                            format!("CUDA ({}, {})", parts[1], parts[2])
+                        } else {
+                            format!("CUDA ({})", parts[1])
+                        }
+                    } else {
+                        "CPU".to_string()
+                    };
+                    log::info!(
+                        "开始语音转录: 音频文件={}, 模型=SenseVoiceSmall, 语言={}, 设备={}",
+                        audio_path_for_log, lang_code_for_log, device_str
+                    );
+                }
+            }
+        }
+    });
+    
     // 在后台线程读取 stderr 并发送进度
     let window_clone = window.clone();
     let stderr_handle = std::thread::spawn(move || {
@@ -1413,6 +1453,9 @@ pub async fn transcribe_with_sensevoice(
     // 等待进程完成
     let status = child.wait()
         .map_err(|e| format!("等待进程失败: {}", e))?;
+    
+    // 等待 stdout 线程完成
+    let _ = stdout_handle.join();
     
     // 获取 stderr 线程的结果
     let last_error = stderr_handle.join()
