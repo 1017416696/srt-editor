@@ -61,13 +61,13 @@ const downloadedModels = computed(() => availableModels.value.filter(m => m.down
 // 当前选中的模型显示名称
 const currentModelName = computed(() => {
   if (configStore.transcriptionEngine === 'sensevoice') {
-    return 'SenseVoice'
+    return 'SenseVoice Small'
   }
   const model = availableModels.value.find(m => m.name === configStore.whisperModel)
-  if (model?.downloaded) return model.name
+  if (model?.downloaded) return `Whisper ${model.name}`
   // 如果默认模型未下载，显示第一个已下载的模型或 base
   const firstDownloaded = downloadedModels.value[0]
-  return firstDownloaded?.name || 'base'
+  return firstDownloaded ? `Whisper ${firstDownloaded.name}` : 'Whisper base'
 })
 
 // 是否显示引擎切换下拉
@@ -508,6 +508,19 @@ const onSelectModel = (command: string) => {
   }
   configStore.saveWhisperSettings()
 }
+
+// Whisper 模型描述
+const getWhisperModelDesc = (modelName: string): string => {
+  const descMap: Record<string, string> = {
+    'tiny': '最快速度',
+    'base': '速度与精度平衡',
+    'small': '较高精度',
+    'medium': '高精度',
+    'large-v2': '最高精度',
+    'large-v3': '最新最高精度',
+  }
+  return descMap[modelName] || ''
+}
 </script>
 
 <template>
@@ -543,33 +556,44 @@ const onSelectModel = (command: string) => {
                 <span>AI 语音转录</span>
                 <span class="model-badge">{{ currentModelName }}</span>
               </button>
-              <el-dropdown trigger="click" @command="onSelectModel">
+              <el-dropdown trigger="click" @command="onSelectModel" popper-class="model-selector-dropdown">
                 <button class="transcription-dropdown" :disabled="isLoading">
                   <i class="i-mdi-chevron-down"></i>
                 </button>
                 <template #dropdown>
                   <el-dropdown-menu>
                     <!-- Whisper 模型 -->
-                    <el-dropdown-item disabled class="dropdown-header">Whisper</el-dropdown-item>
+                    <el-dropdown-item disabled class="dropdown-header">
+                      <span>OpenAI Whisper</span>
+                    </el-dropdown-item>
                     <el-dropdown-item
                       v-for="model in downloadedModels"
                       :key="model.name"
                       :command="model.name"
+                      class="model-option"
                       :class="{ 'is-active': configStore.transcriptionEngine === 'whisper' && model.name === configStore.whisperModel }"
                     >
-                      {{ model.name }}
+                      <span class="model-name">{{ model.name }}</span>
+                      <span class="model-desc">{{ getWhisperModelDesc(model.name) }}</span>
+                      <i v-if="configStore.transcriptionEngine === 'whisper' && model.name === configStore.whisperModel" class="i-mdi-check model-check"></i>
                     </el-dropdown-item>
-                    <el-dropdown-item v-if="downloadedModels.length === 0" disabled>
-                      暂无已下载模型
+                    <el-dropdown-item v-if="downloadedModels.length === 0" disabled class="no-model-hint">
+                      <i class="i-mdi-information-outline"></i>
+                      <span>请在设置中下载模型</span>
                     </el-dropdown-item>
                     <!-- SenseVoice (仅在已安装时显示) -->
                     <template v-if="sensevoiceEnvStatus.ready">
-                      <el-dropdown-item divided disabled class="dropdown-header">SenseVoice</el-dropdown-item>
+                      <el-dropdown-item divided disabled class="dropdown-header">
+                        <span>阿里 SenseVoice</span>
+                      </el-dropdown-item>
                       <el-dropdown-item
                         command="sensevoice"
+                        class="model-option"
                         :class="{ 'is-active': configStore.transcriptionEngine === 'sensevoice' }"
                       >
-                        SenseVoice
+                        <span class="model-name">Small</span>
+                        <span class="model-desc">中文优化</span>
+                        <i v-if="configStore.transcriptionEngine === 'sensevoice'" class="i-mdi-check model-check"></i>
                       </el-dropdown-item>
                     </template>
                   </el-dropdown-menu>
@@ -940,13 +964,60 @@ const onSelectModel = (command: string) => {
   font-size: 11px !important;
   color: #909399 !important;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
+  display: flex !important;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 4px !important;
 }
+
+
 
 :deep(.el-dropdown-menu__item.is-active) {
   color: #409eff;
   background: rgba(64, 158, 255, 0.08);
+}
+
+:deep(.model-option) {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px !important;
+  min-width: 180px;
+}
+
+:deep(.model-option .model-name) {
+  font-size: 13px;
+  font-weight: 500;
+  color: #303133;
+}
+
+:deep(.model-option .model-desc) {
+  font-size: 11px;
+  color: #909399;
+  flex: 1;
+}
+
+:deep(.model-option .model-check) {
+  font-size: 16px;
+  color: #409eff;
+  margin-left: auto;
+}
+
+:deep(.model-option.is-active .model-name) {
+  color: #409eff;
+}
+
+:deep(.no-model-hint) {
+  display: flex !important;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px !important;
+  color: #909399 !important;
+}
+
+:deep(.no-model-hint i) {
+  font-size: 14px;
 }
 
 /* 最近文件 */
