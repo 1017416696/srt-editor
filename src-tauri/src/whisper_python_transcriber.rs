@@ -961,14 +961,14 @@ pub async fn transcribe_with_whisper(
                 if line.starts_with("STATUS:") {
                     let status = line.trim_start_matches("STATUS:");
                     let (progress, text, status_str) = match status {
-                        "loading" => (5.0, "正在加载 Whisper 模型...".to_string(), "loading"),
+                        "loading" => (5.0, "正在加载语音模型...".to_string(), "loading"),
                         "transcribing" => {
                             is_transcribing_clone.store(true, Ordering::SeqCst);
-                            (10.0, "模型加载完成，开始转录...".to_string(), "transcribing")
+                            (10.0, "正在识别语音内容...".to_string(), "transcribing")
                         },
                         "completed" => {
                             transcribe_done_clone.store(true, Ordering::SeqCst);
-                            (99.0, "转录完成，正在处理结果...".to_string(), "processing")
+                            (99.0, "正在处理结果...".to_string(), "processing")
                         },
                         _ => continue,
                     };
@@ -982,16 +982,20 @@ pub async fn transcribe_with_whisper(
                 // 解析 PROGRESS:百分比:文本 格式
                 else if line.starts_with("PROGRESS:") {
                     let content = line.trim_start_matches("PROGRESS:");
-                    if let Some((pct_str, text)) = content.split_once(':') {
+                    if let Some((pct_str, _text)) = content.split_once(':') {
                         if let Ok(pct) = pct_str.parse::<f32>() {
                             // 将进度映射到 10-95 范围
                             let mapped_progress = 10.0 + (pct * 0.85);
-                            current_progress_clone.store((mapped_progress * 100.0) as u64, Ordering::SeqCst);
-                            let _ = window_clone.emit("transcription-progress", WhisperProgress {
-                                progress: mapped_progress,
-                                current_text: format!("正在转录: {}", text),
-                                status: "transcribing".to_string(),
-                            });
+                            // 只有当新进度大于当前进度时才更新，避免进度倒退
+                            let current = current_progress_clone.load(Ordering::SeqCst) as f32 / 100.0;
+                            if mapped_progress > current {
+                                current_progress_clone.store((mapped_progress * 100.0) as u64, Ordering::SeqCst);
+                                let _ = window_clone.emit("transcription-progress", WhisperProgress {
+                                    progress: mapped_progress,
+                                    current_text: "正在识别语音内容...".to_string(),
+                                    status: "transcribing".to_string(),
+                                });
+                            }
                         }
                     }
                 }
@@ -1141,7 +1145,7 @@ pub async fn transcribe_with_whisper(
     // 发送完成进度
     let _ = window.emit("transcription-progress", WhisperProgress {
         progress: 100.0,
-        current_text: format!("转录完成！共生成 {} 条字幕，耗时 {:.1} 秒", entries.len(), elapsed_secs),
+        current_text: "转录完成".to_string(),
         status: "completed".to_string(),
     });
     

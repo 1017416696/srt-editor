@@ -1140,8 +1140,7 @@ def transcribe(audio_path, language="auto"):
     # 输出设备信息（包含 GPU 型号）
     print(f"DEVICE_INFO:{DEVICE_INFO}", flush=True)
     
-    device_tag = "[GPU]" if DEVICE == "cuda" else "[CPU]"
-    emit_progress(0, 100, "loading", f"{device_tag} 正在加载 SenseVoice 模型...")
+    emit_progress(0, 100, "loading", "正在加载语音模型...")
     
     # 加载 VAD 模型（关键参数：max_end_silence_time=250 让分段更敏感）
     vad_model = AutoModel(
@@ -1151,7 +1150,7 @@ def transcribe(audio_path, language="auto"):
         device=DEVICE
     )
     
-    emit_progress(5, 100, "loading", f"{device_tag} 正在加载 SenseVoice 模型...")
+    emit_progress(5, 100, "loading", "正在加载语音模型...")
     
     # 加载 SenseVoice 模型
     model = AutoModel(
@@ -1160,7 +1159,7 @@ def transcribe(audio_path, language="auto"):
         device=DEVICE
     )
     
-    emit_progress(10, 100, "vad", "正在分析语音片段...")
+    emit_progress(10, 100, "vad", "正在识别语音内容...")
     
     # VAD 分段
     vad_res = vad_model.generate(input=audio_path)
@@ -1174,7 +1173,7 @@ def transcribe(audio_path, language="auto"):
     audio = AudioSegment.from_file(audio_path)
     audio_duration_sec = len(audio) / 1000.0
     
-    emit_progress(15, 100, "transcribing", f"共 {total_segments} 个片段，音频时长 {audio_duration_sec:.1f} 秒")
+    emit_progress(15, 100, "transcribing", "正在识别语音内容...")
     
     # 创建临时目录
     tmp_dir = tempfile.mkdtemp()
@@ -1189,20 +1188,7 @@ def transcribe(audio_path, language="auto"):
             # 计算进度（15% - 95% 用于转录）
             progress = 15 + int((idx / total_segments) * 80)
             
-            # 计算预估剩余时间
-            elapsed = time.time() - start_time
-            if idx > 0:
-                avg_time_per_seg = elapsed / idx
-                remaining_segs = total_segments - idx
-                eta_sec = avg_time_per_seg * remaining_segs
-                if eta_sec < 60:
-                    eta_str = f"预计剩余 {int(eta_sec)} 秒"
-                else:
-                    eta_str = f"预计剩余 {int(eta_sec / 60)} 分 {int(eta_sec % 60)} 秒"
-            else:
-                eta_str = "正在估算..."
-            
-            emit_progress(progress, 100, "transcribing", f"正在转录 {idx + 1}/{total_segments}，{eta_str}")
+            emit_progress(progress, 100, "transcribing", "正在识别语音内容...")
             
             # 切分音频片段
             chunk = audio[start_ms:end_ms]
@@ -1242,7 +1228,7 @@ def transcribe(audio_path, language="auto"):
         except:
             pass
     
-    emit_progress(100, 100, "completed", f"转录完成，共 {len(all_segments)} 条字幕")
+    emit_progress(100, 100, "completed", "转录完成")
     return {"segments": all_segments}
 
 def main():
@@ -1323,7 +1309,7 @@ pub async fn transcribe_with_sensevoice(
     // 发送初始进度
     let _ = window.emit("transcription-progress", SenseVoiceProgress {
         progress: 0.0,
-        current_text: "正在启动 SenseVoice...".to_string(),
+        current_text: "正在启动转录...".to_string(),
         status: "loading".to_string(),
     });
     
@@ -1532,7 +1518,7 @@ pub async fn transcribe_with_sensevoice(
     // 发送完成
     let _ = window.emit("transcription-progress", SenseVoiceProgress {
         progress: 100.0,
-        current_text: format!("转录完成！生成了 {} 条字幕，耗时 {:.1} 秒", entries.len(), elapsed_secs),
+        current_text: "转录完成".to_string(),
         status: "completed".to_string(),
     });
     
