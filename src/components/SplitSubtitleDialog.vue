@@ -484,8 +484,86 @@ function handleCancel() {
   emit('update:visible', false)
 }
 
-function increaseSegments() { if (segmentCount.value < 5) segmentCount.value++ }
-function decreaseSegments() { if (segmentCount.value > 2) segmentCount.value-- }
+// 在指定段落后面添加新段落
+function addSegmentAfter(index: number) {
+  if (segments.value.length >= 5) return // 最多5段
+  
+  const segment = segments.value[index]
+  if (!segment) return
+  
+  // 在当前段落的中间位置分割
+  const midTime = Math.round((segment.startTimeMs + segment.endTimeMs) / 2)
+  const duration = segment.endTimeMs - segment.startTimeMs
+  const ratio = (midTime - segment.startTimeMs) / duration
+  const textSplitIndex = Math.round(segment.text.length * ratio)
+  
+  // 保存后半部分文本
+  const secondPartText = segment.text.substring(textSplitIndex)
+  
+  // 更新当前段
+  const originalEndTime = segment.endTimeMs
+  segment.endTimeMs = midTime
+  segment.text = segment.text.substring(0, textSplitIndex)
+  
+  // 在当前段后面插入新段
+  const newSegment: SplitSegment = {
+    id: index + 2,
+    startTimeMs: midTime,
+    endTimeMs: originalEndTime,
+    text: secondPartText
+  }
+  segments.value.splice(index + 1, 0, newSegment)
+  
+  // 添加新分割点
+  splitPoints.value.push(midTime)
+  splitPoints.value.sort((a, b) => a - b)
+  
+  // 重新编号
+  segments.value.forEach((seg, i) => { seg.id = i + 1 })
+  segmentCount.value = segments.value.length
+  
+  nextTick(() => renderWaveform())
+}
+
+// 删除指定段落
+function deleteSegment(index: number) {
+  if (segments.value.length <= 2) return // 至少保留2段
+  
+  const segment = segments.value[index]
+  if (!segment) return
+  
+  // 将被删除段落的文本合并到相邻段落
+  if (index === 0) {
+    // 删除第一段，文本合并到第二段
+    const nextSegment = segments.value[1]
+    if (nextSegment) {
+      nextSegment.text = segment.text + nextSegment.text
+      nextSegment.startTimeMs = segment.startTimeMs
+    }
+  } else {
+    // 删除其他段，文本合并到前一段
+    const prevSegment = segments.value[index - 1]
+    if (prevSegment) {
+      prevSegment.text = prevSegment.text + segment.text
+      prevSegment.endTimeMs = segment.endTimeMs
+    }
+  }
+  
+  // 删除段落
+  segments.value.splice(index, 1)
+  
+  // 重建分割点
+  splitPoints.value = []
+  for (let i = 1; i < segments.value.length; i++) {
+    splitPoints.value.push(segments.value[i]!.startTimeMs)
+  }
+  
+  // 重新编号
+  segments.value.forEach((seg, i) => { seg.id = i + 1 })
+  segmentCount.value = segments.value.length
+  
+  nextTick(() => renderWaveform())
+}
 </script>
 
 <template>
@@ -498,15 +576,10 @@ function decreaseSegments() { if (segmentCount.value > 2) segmentCount.value-- }
         <button class="close-btn" @click="handleCancel">×</button>
       </div>
 
-      <!-- 分割设置 -->
-      <div class="split-settings">
-        <span>分割为</span>
-        <div class="segment-counter">
-          <button @click="decreaseSegments" :disabled="segmentCount <= 2">−</button>
-          <span>{{ segmentCount }}</span>
-          <button @click="increaseSegments" :disabled="segmentCount >= 5">+</button>
-        </div>
-        <span>段</span>
+      <!-- 分割提示 -->
+      <div class="split-hint">
+        <span class="hint-text">共 {{ segments.length }} 段</span>
+        <span class="hint-tip">回车或 + 添加分段 · × 删除分段</span>
       </div>
 
       <!-- 波形区域 -->
@@ -546,14 +619,40 @@ function decreaseSegments() { if (segmentCount.value > 2) segmentCount.value-- }
             <span class="segment-time">{{ formatTime(segment.startTimeMs) }} → {{ formatTime(segment.endTimeMs) }}</span>
             <span class="segment-duration">{{ getDuration(segment.startTimeMs, segment.endTimeMs) }}</span>
           </div>
-          <textarea
-            class="segment-text"
-            :value="segment.text"
-            @input="updateSegmentText(index, ($event.target as HTMLTextAreaElement).value)"
-            @keydown="handleTextKeyDown($event, index)"
-            rows="1"
-            placeholder="输入文本... (按回车分割)"
-          />
+          <div class="segment-content">
+            <textarea
+              class="segment-text"
+              :value="segment.text"
+              @input="updateSegmentText(index, ($event.target as HTMLTextAreaElement).value)"
+              @keydown="handleTextKeyDown($event, index)"
+              rows="1"
+              placeholder="输入文本... (按回车分割)"
+            />
+            <div class="segment-actions">
+              <button 
+                class="action-btn add-btn" 
+                @click="addSegmentAfter(index)"
+                :disabled="segments.length >= 5"
+                title="在此段后添加新段"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+              </button>
+              <button 
+                class="action-btn delete-btn" 
+                @click="deleteSegment(index)"
+                :disabled="segments.length <= 2"
+                title="删除此段"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -627,54 +726,25 @@ function decreaseSegments() { if (segmentCount.value > 2) segmentCount.value-- }
   color: #333;
 }
 
-.split-settings {
-  padding: 12px 20px;
+.split-hint {
+  padding: 10px 20px;
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 14px;
-  color: #333;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #666;
   border-bottom: 1px solid #eee;
+  background: #fafafa;
 }
 
-.segment-counter {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  background: #f5f5f5;
-  border-radius: 8px;
-  padding: 3px;
-}
-
-.segment-counter button {
-  width: 28px;
-  height: 28px;
-  border: none;
-  background: #fff;
-  border-radius: 6px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  color: #333;
-  transition: all 0.15s;
-}
-
-.segment-counter button:hover:not(:disabled) {
-  background: #007aff;
-  color: #fff;
-}
-
-.segment-counter button:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.segment-counter > span {
-  width: 28px;
-  text-align: center;
-  font-weight: 600;
+.hint-text {
+  font-weight: 500;
   color: #007aff;
-  font-size: 15px;
+}
+
+.hint-tip {
+  font-size: 12px;
+  color: #999;
 }
 
 .waveform-section {
@@ -804,8 +874,14 @@ function decreaseSegments() { if (segmentCount.value > 2) segmentCount.value-- }
   font-size: 11px;
 }
 
+.segment-content {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
 .segment-text {
-  width: 100%;
+  flex: 1;
   padding: 8px 10px;
   border: 1px solid #ddd;
   border-radius: 6px;
@@ -825,6 +901,50 @@ function decreaseSegments() { if (segmentCount.value > 2) segmentCount.value-- }
 
 .segment-text::placeholder {
   color: #bbb;
+}
+
+.segment-actions {
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  align-items: center;
+}
+
+.action-btn {
+  width: 26px;
+  height: 26px;
+  border: 1px solid #e0e0e0;
+  border-radius: 5px;
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  color: #666;
+  flex-shrink: 0;
+}
+
+.action-btn:hover:not(:disabled) {
+  border-color: #ccc;
+  background: #f5f5f5;
+}
+
+.action-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.action-btn.add-btn:hover:not(:disabled) {
+  border-color: #22c55e;
+  background: #f0fdf4;
+  color: #16a34a;
+}
+
+.action-btn.delete-btn:hover:not(:disabled) {
+  border-color: #ef4444;
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 .dialog-footer {
@@ -894,18 +1014,41 @@ function decreaseSegments() { if (segmentCount.value > 2) segmentCount.value-- }
   color: #e0e0e0;
 }
 
-:root.dark .split-settings {
+:root.dark .split-hint {
   border-color: #333;
-  color: #e0e0e0;
+  background: #252525;
+  color: #888;
 }
 
-:root.dark .segment-counter {
+:root.dark .hint-text {
+  color: #60a5fa;
+}
+
+:root.dark .hint-tip {
+  color: #666;
+}
+
+:root.dark .action-btn {
   background: #2a2a2a;
+  border-color: #444;
+  color: #888;
 }
 
-:root.dark .segment-counter button {
+:root.dark .action-btn:hover:not(:disabled) {
   background: #333;
-  color: #e0e0e0;
+  border-color: #555;
+}
+
+:root.dark .action-btn.add-btn:hover:not(:disabled) {
+  border-color: #22c55e;
+  background: #1a2e1a;
+  color: #4ade80;
+}
+
+:root.dark .action-btn.delete-btn:hover:not(:disabled) {
+  border-color: #ef4444;
+  background: #2e1a1a;
+  color: #f87171;
 }
 
 :root.dark .waveform-section {
