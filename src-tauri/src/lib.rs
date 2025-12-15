@@ -722,6 +722,22 @@ fn base64_encode(data: &[u8]) -> String {
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
+            // Windows: 处理命令行参数中的文件路径
+            #[cfg(target_os = "windows")]
+            {
+                let args: Vec<String> = std::env::args().collect();
+                // 第一个参数是程序路径，从第二个开始检查
+                for arg in args.iter().skip(1) {
+                    if arg.to_lowercase().ends_with(".srt") && std::path::Path::new(arg).exists() {
+                        info!("Windows: 通过命令行参数打开 SRT 文件: {}", arg);
+                        if let Ok(mut pending) = PENDING_FILE_OPEN.lock() {
+                            *pending = Some(arg.clone());
+                        }
+                        break; // 只处理第一个文件
+                    }
+                }
+            }
+            
             #[cfg(target_os = "macos")]
             {
                 // 在 macOS 上，第一个子菜单会自动成为应用菜单
