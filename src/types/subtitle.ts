@@ -141,3 +141,13 @@ export interface SearchResult {
   matchIndex: number // 匹配位置
   matchLength: number // 匹配长度
 }
+
+/**
+ * 文件权限检查结果
+ */
+export interface FilePermissionCheck {
+  readable: boolean // 是否可读
+  writable: boolean // 是否可写
+  error_message: string | null // 错误信息
+  is_locked: boolean // 是否被 macOS 锁定
+}

@@ -48,8 +48,49 @@ const globalOpenFile = async () => {
       const loadStartTime = Date.now()
       const { useSubtitleStore } = await import('./stores/subtitle')
       const { useConfigStore } = await import('./stores/config')
+      const { ElMessageBox } = await import('element-plus')
       const store = useSubtitleStore()
       const configStore = useConfigStore()
+      
+      // 检查文件写入权限
+      const permissionCheck = (await invoke('check_file_write_permission', {
+        filePath: selected,
+      })) as {
+        readable: boolean
+        writable: boolean
+        error_message: string | null
+        is_locked: boolean
+      }
+
+      if (!permissionCheck.writable) {
+        if (permissionCheck.is_locked) {
+          // 文件被锁定，提供解锁选项
+          try {
+            await ElMessageBox.confirm(
+              '文件已被锁定，无法写入。\n\n点击「解锁」按钮可以解除锁定并继续编辑。',
+              '文件已锁定',
+              { confirmButtonText: '解锁', cancelButtonText: '取消', type: 'warning' }
+            )
+            // 用户点击解锁
+            await invoke('unlock_file_cmd', { filePath: selected })
+          } catch {
+            // 用户点击取消
+            logger.warn('用户取消解锁文件', { path: selected })
+            return
+          }
+        } else {
+          // 其他权限问题
+          const warningMessage = permissionCheck.error_message || '文件无法写入。'
+          await ElMessageBox.alert(warningMessage, '无法打开文件', {
+            confirmButtonText: '我知道了',
+            type: 'warning',
+            dangerouslyUseHTMLString: true,
+          })
+          logger.warn('文件权限受限，取消打开', { path: selected })
+          return
+        }
+      }
+
       const srtFile = (await invoke('read_srt', { filePath: selected })) as any
       await store.loadSRTFile(srtFile)
 
@@ -88,6 +129,30 @@ const globalSaveFile = async () => {
     logger.info('保存文件成功', { path: store.currentFilePath })
   } catch (error) {
     logger.error('保存文件失败', { error: String(error) })
+    
+    // 检查是否是权限问题，给出详细提示
+    const errorStr = String(error)
+    if (errorStr.includes('Permission denied') || errorStr.includes('os error 13')) {
+      const { ElMessageBox } = await import('element-plus')
+      const { useSubtitleStore } = await import('./stores/subtitle')
+      const store = useSubtitleStore()
+      const filePath = store.currentFilePath || ''
+      
+      await ElMessageBox.alert(
+        `<p><strong>文件保存失败：权限被拒绝</strong></p>
+        <p style="margin-top: 10px;">这可能是因为文件从网络下载或从其他人处接收，macOS 为其添加了安全隔离属性。</p>
+        <p style="margin-top: 10px;"><strong>解决方法：</strong></p>
+        <p>在终端运行以下命令移除隔离属性：</p>
+        <pre style="background: #f5f5f5; padding: 10px; margin-top: 5px; border-radius: 4px; overflow-x: auto;">xattr -d com.apple.quarantine "${filePath}"</pre>
+        <p style="margin-top: 10px;">或者使用「另存为」功能将文件保存到其他位置。</p>`,
+        '保存失败',
+        {
+          confirmButtonText: '我知道了',
+          type: 'error',
+          dangerouslyUseHTMLString: true,
+        }
+      )
+    }
   }
 }
 

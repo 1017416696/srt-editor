@@ -187,6 +187,37 @@ const processFiles = async ({ srtPath, audioPath }: { srtPath?: string; audioPat
   let srtLoaded = false
   try {
     if (srtPath) {
+      loadingMessage.value = '正在检查文件权限...'
+      // 检查文件写入权限
+      const permissionCheck = await invoke<{ readable: boolean; writable: boolean; error_message: string | null; is_locked: boolean }>('check_file_write_permission', { filePath: srtPath })
+      
+      if (!permissionCheck.writable) {
+        if (permissionCheck.is_locked) {
+          // 文件被锁定，提供解锁选项
+          try {
+            await ElMessageBox.confirm(
+              '文件已被锁定，无法写入。\n\n点击「解锁」按钮可以解除锁定并继续编辑。',
+              '文件已锁定',
+              { confirmButtonText: '解锁', cancelButtonText: '取消', type: 'warning' }
+            )
+            // 用户点击解锁
+            await invoke('unlock_file_cmd', { filePath: srtPath })
+          } catch {
+            // 用户点击取消
+            isLoading.value = false
+            loadingMessage.value = ''
+            return
+          }
+        } else {
+          // 其他权限问题
+          const warningMessage = permissionCheck.error_message || '文件无法写入。'
+          await ElMessageBox.alert(warningMessage, '无法打开文件', { confirmButtonText: '我知道了', type: 'warning', dangerouslyUseHTMLString: true })
+          isLoading.value = false
+          loadingMessage.value = ''
+          return
+        }
+      }
+      
       loadingMessage.value = '正在加载字幕文件...'
       const srtFile = await invoke<SRTFile>('read_srt', { filePath: srtPath })
       await subtitleStore.loadSRTFile(srtFile)
@@ -219,8 +250,39 @@ const formatRelativeTime = (timestamp: number): string => {
 
 const openRecentFile = async (filePath: string) => {
   isLoading.value = true
-  loadingMessage.value = '正在加载字幕文件...'
+  loadingMessage.value = '正在检查文件权限...'
   try {
+    // 检查文件写入权限
+    const permissionCheck = await invoke<{ readable: boolean; writable: boolean; error_message: string | null; is_locked: boolean }>('check_file_write_permission', { filePath })
+    
+    if (!permissionCheck.writable) {
+      if (permissionCheck.is_locked) {
+        // 文件被锁定，提供解锁选项
+        try {
+          await ElMessageBox.confirm(
+            '文件已被锁定，无法写入。\n\n点击「解锁」按钮可以解除锁定并继续编辑。',
+            '文件已锁定',
+            { confirmButtonText: '解锁', cancelButtonText: '取消', type: 'warning' }
+          )
+          // 用户点击解锁
+          await invoke('unlock_file_cmd', { filePath })
+        } catch {
+          // 用户点击取消
+          isLoading.value = false
+          loadingMessage.value = ''
+          return
+        }
+      } else {
+        // 其他权限问题
+        const warningMessage = permissionCheck.error_message || '文件无法写入。'
+        await ElMessageBox.alert(warningMessage, '无法打开文件', { confirmButtonText: '我知道了', type: 'warning', dangerouslyUseHTMLString: true })
+        isLoading.value = false
+        loadingMessage.value = ''
+        return
+      }
+    }
+    
+    loadingMessage.value = '正在加载字幕文件...'
     const srtFile = await invoke<SRTFile>('read_srt', { filePath })
     await subtitleStore.loadSRTFile(srtFile)
     configStore.addRecentFile(filePath)

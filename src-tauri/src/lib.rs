@@ -7,6 +7,7 @@ mod firered_corrector;
 use srt_parser::{
     read_srt_file, write_srt_file, SRTFile, SubtitleEntry,
     export_to_txt, export_to_vtt, export_to_markdown, export_to_fcpxml,
+    check_file_permission, unlock_file, FilePermissionCheck,
 };
 use whisper_python_transcriber::{
     check_whisper_env, install_whisper_env, transcribe_with_whisper,
@@ -56,6 +57,18 @@ fn read_srt(file_path: String) -> Result<SRTFile, String> {
 #[tauri::command]
 fn write_srt(file_path: String, entries: Vec<SubtitleEntry>) -> Result<(), String> {
     write_srt_file(&file_path, &entries)
+}
+
+/// 检查文件写入权限
+#[tauri::command]
+fn check_file_write_permission(file_path: String) -> FilePermissionCheck {
+    check_file_permission(&file_path)
+}
+
+/// 解锁文件
+#[tauri::command]
+fn unlock_file_cmd(file_path: String) -> Result<(), String> {
+    unlock_file(&file_path)
 }
 
 /// Read audio file and return as base64
@@ -1109,6 +1122,8 @@ pub fn run() {
             greet,
             read_srt,
             write_srt,
+            check_file_write_permission,
+            unlock_file_cmd,
             read_audio_file,
             generate_audio_waveform,
             trigger_open_file,

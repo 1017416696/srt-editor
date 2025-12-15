@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::fs::OpenOptions;
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -138,6 +139,94 @@ pub fn read_srt_file(file_path: &str) -> Result<SRTFile, String> {
         entries,
         encoding: Some("UTF-8".to_string()),
     })
+}
+
+/// 文件权限检查结果
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FilePermissionCheck {
+    pub readable: bool,
+    pub writable: bool,
+    pub error_message: Option<String>,
+    pub is_locked: bool,
+}
+
+/// 解锁文件 (移除 macOS 的锁定标志，并修复权限)
+#[cfg(target_os = "macos")]
+pub fn unlock_file(file_path: &str) -> Result<(), String> {
+    use std::process::Command;
+
+    // 1. 尝试移除 uchg 标志
+    let _ = Command::new("chflags")
+        .args(["nouchg", file_path])
+        .output();
+
+    // 2. 尝试添加写入权限
+    let output = Command::new("chmod")
+        .args(["+w", file_path])
+        .output()
+        .map_err(|e| format!("执行权限修改命令失败: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        Err(format!("修改文件权限失败: {}", stderr))
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn unlock_file(_file_path: &str) -> Result<(), String> {
+    Ok(())
+}
+
+/// 检查文件是否可写入
+/// 这个函数会尝试以追加模式打开文件来检测写入权限
+/// 不会修改文件内容
+pub fn check_file_permission(file_path: &str) -> FilePermissionCheck {
+    let path = Path::new(file_path);
+
+    // 检查文件是否存在
+    if !path.exists() {
+        return FilePermissionCheck {
+            readable: false,
+            writable: false,
+            error_message: Some("文件不存在".to_string()),
+            is_locked: false,
+        };
+    }
+
+    // 检查读取权限
+    let readable = fs::read_to_string(file_path).is_ok();
+
+    // 检查写入权限 - 尝试以追加模式打开文件
+    let write_result = OpenOptions::new().write(true).append(true).open(file_path);
+
+    let (writable, error_message, is_locked) = match write_result {
+        Ok(_) => (true, None, false),
+        Err(e) => {
+            let is_permission_denied = e.kind() == std::io::ErrorKind::PermissionDenied;
+
+            // 在 macOS 上，Permission denied 通常可以通过解锁来解决
+            // 包括：文件被锁定、只读权限、从外部来源获取的文件等
+            let is_locked = is_permission_denied && cfg!(target_os = "macos");
+
+            let message = if is_locked {
+                "文件已被锁定或没有写入权限。\n\n点击「解锁」按钮可以尝试解除限制并继续编辑。"
+                    .to_string()
+            } else {
+                format!("文件无法写入: {}", e)
+            };
+
+            (false, Some(message), is_locked)
+        }
+    };
+    
+    FilePermissionCheck {
+        readable,
+        writable,
+        error_message,
+        is_locked,
+    }
 }
 
 /// Write SRT file
