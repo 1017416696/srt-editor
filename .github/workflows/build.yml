@@ -6,6 +6,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -23,7 +26,7 @@ jobs:
             name: Windows
 
     runs-on: ${{ matrix.platform }}
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -61,11 +64,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           args: ${{ matrix.args }}
-          tagName: v__VERSION__
-          releaseName: 'VoSub v__VERSION__'
-          releaseBody: 'See the assets to download this version and install.'
-          releaseDraft: true
-          prerelease: false
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
