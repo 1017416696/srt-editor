@@ -83,7 +83,7 @@ fn get_whisper_base_dir() -> Result<PathBuf, String> {
     let home_dir = dirs::home_dir()
         .ok_or_else(|| "Failed to get home directory".to_string())?;
     
-    Ok(home_dir.join(".config").join("srt-editor"))
+    Ok(home_dir.join(".config").join("vosub"))
 }
 
 /// 获取 Whisper CPU 环境目录
@@ -165,7 +165,7 @@ pub fn get_scripts_dir() -> Result<PathBuf, String> {
     
     let scripts_dir = home_dir
         .join(".config")
-        .join("srt-editor")
+        .join("vosub")
         .join("scripts");
     
     if !scripts_dir.exists() {

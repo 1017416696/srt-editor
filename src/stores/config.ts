@@ -51,12 +51,12 @@ export const useConfigStore = defineStore('config', () => {
 
   // 保存标点符号配置
   const savePunctuation = () => {
-    localStorage.setItem('srt-editor-punctuation', punctuationToRemove.value)
+    localStorage.setItem('vosub-punctuation', punctuationToRemove.value)
   }
 
   // 加载标点符号配置
   const loadPunctuation = () => {
-    const saved = localStorage.getItem('srt-editor-punctuation')
+    const saved = localStorage.getItem('vosub-punctuation')
     if (saved !== null) {
       punctuationToRemove.value = saved
     }
@@ -64,7 +64,7 @@ export const useConfigStore = defineStore('config', () => {
 
   // 保存转录设置
   const saveWhisperSettings = () => {
-    localStorage.setItem('srt-editor-whisper', JSON.stringify({
+    localStorage.setItem('vosub-whisper', JSON.stringify({
       engine: transcriptionEngine.value,
       model: whisperModel.value,
       language: whisperLanguage.value,
@@ -74,7 +74,7 @@ export const useConfigStore = defineStore('config', () => {
 
   // 加载转录设置
   const loadWhisperSettings = () => {
-    const saved = localStorage.getItem('srt-editor-whisper')
+    const saved = localStorage.getItem('vosub-whisper')
     if (saved) {
       try {
         const parsed = JSON.parse(saved)
@@ -90,7 +90,7 @@ export const useConfigStore = defineStore('config', () => {
 
   // 保存导出设置
   const saveExportSettings = () => {
-    localStorage.setItem('srt-editor-export', JSON.stringify({
+    localStorage.setItem('vosub-export', JSON.stringify({
       format: defaultExportFormat.value,
       fcpxmlFps: defaultFcpxmlFps.value,
     }))
@@ -98,7 +98,7 @@ export const useConfigStore = defineStore('config', () => {
 
   // 加载导出设置
   const loadExportSettings = () => {
-    const saved = localStorage.getItem('srt-editor-export')
+    const saved = localStorage.getItem('vosub-export')
     if (saved) {
       try {
         const parsed = JSON.parse(saved)
@@ -156,12 +156,12 @@ export const useConfigStore = defineStore('config', () => {
 
   // 保存配置到本地
   const saveConfig = () => {
-    localStorage.setItem('srt-editor-config', JSON.stringify(config.value))
+    localStorage.setItem('vosub-config', JSON.stringify(config.value))
   }
 
   // 加载配置
   const loadConfig = () => {
-    const saved = localStorage.getItem('srt-editor-config')
+    const saved = localStorage.getItem('vosub-config')
     if (saved) {
       try {
         const parsed = JSON.parse(saved)
@@ -172,7 +172,7 @@ export const useConfigStore = defineStore('config', () => {
       }
     }
     // 加载最近文件列表
-    const savedRecentFiles = localStorage.getItem('srt-editor-recent-files')
+    const savedRecentFiles = localStorage.getItem('vosub-recent-files')
     if (savedRecentFiles) {
       try {
         recentFiles.value = JSON.parse(savedRecentFiles)
@@ -203,19 +203,19 @@ export const useConfigStore = defineStore('config', () => {
     }
     
     // 保存到本地存储
-    localStorage.setItem('srt-editor-recent-files', JSON.stringify(recentFiles.value))
+    localStorage.setItem('vosub-recent-files', JSON.stringify(recentFiles.value))
   }
 
   // 清空最近文件
   const clearRecentFiles = () => {
     recentFiles.value = []
-    localStorage.removeItem('srt-editor-recent-files')
+    localStorage.removeItem('vosub-recent-files')
   }
 
   // 删除单个最近文件
   const removeRecentFile = (filePath: string) => {
     recentFiles.value = recentFiles.value.filter(f => f.path !== filePath)
-    localStorage.setItem('srt-editor-recent-files', JSON.stringify(recentFiles.value))
+    localStorage.setItem('vosub-recent-files', JSON.stringify(recentFiles.value))
   }
 
   // 初始化时加载配置

@@ -1,6 +1,6 @@
 # 部署文档 / Deployment Guide
 
-本文档详细说明了如何在本地环境中部署和运行 SRT Editor 项目。
+本文档详细说明了如何在本地环境中部署和运行 VoSub 项目。
 
 ## 系统要求
 
@@ -181,7 +181,7 @@ sudo apt install libwebkit2gtk-4.1-dev \
 
 ```bash
 git clone <repository-url>
-cd srt-editor
+cd vosub
 ```
 
 ### 2. 安装依赖
@@ -317,7 +317,7 @@ pnpm check
 ## 目录结构
 
 ```
-srt-editor/
+vosub/
 ├── src/                 # Vue 前端源代码
 ├── src-tauri/          # Tauri Rust 后端代码
 ├── public/             # 静态资源

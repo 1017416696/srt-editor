@@ -948,7 +948,7 @@ setupListeners()
 // 联系方式
 const contactInfo = {
   email: ' 1017416696@qq.com',
-  github: 'https://github.com/1017416696/srt-editor.git',
+  github: 'https://github.com/1017416696/vosub.git',
 }
 
 // 打开外部链接
@@ -2149,9 +2149,9 @@ const shortcutCategories = computed(() => {
               
               <div class="about-content">
                 <div class="app-logo">
-                  <img src="/favicon.ico" alt="SRT Editor" class="logo-img" />
+                  <img src="/favicon.ico" alt="VoSub" class="logo-img" />
                 </div>
-                <h3 class="app-name">SRT 字幕编辑器</h3>
+                <h3 class="app-name">VoSub</h3>
                 <p class="app-version">版本 {{ appVersion }}</p>
                 <p class="app-desc">
                   一款简洁高效的 SRT 字幕编辑工具，支持音频波形显示、字幕时间轴编辑等功能。

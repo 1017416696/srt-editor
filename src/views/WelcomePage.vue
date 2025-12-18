@@ -588,7 +588,7 @@ const getWhisperModelDesc = (modelName: string): string => {
 <template>
   <div class="welcome-page" :class="{ 'is-dragging': isDragging }">
     <div class="titlebar" @mousedown.left="onTitlebarMousedown" @dblclick="onTitlebarDoubleClick">
-      <span class="titlebar-title">SRT 字幕编辑器</span>
+      <span class="titlebar-title">VoSub</span>
     </div>
 
     <div class="welcome-content">
@@ -599,7 +599,7 @@ const getWhisperModelDesc = (modelName: string): string => {
             <i class="i-mdi-subtitles-outline"></i>
           </div>
           <div class="brand-text">
-            <h1 class="brand-title">SRT 字幕编辑器</h1>
+            <h1 class="brand-title">VoSub</h1>
             <p class="brand-desc">专业的字幕编辑工具，支持音频同步和批量操作</p>
           </div>
         </div>

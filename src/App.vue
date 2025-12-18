@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// SRT 字幕编辑器主应用
+// VoSub 主应用
 </script>
 
 <template>

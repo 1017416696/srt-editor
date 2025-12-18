@@ -568,10 +568,10 @@ fn update_recent_files_menu(app_handle: tauri::AppHandle, files: Vec<RecentFileI
         {
             use tauri::menu::{MenuItem, PredefinedMenuItem};
             
-            let app_menu = SubmenuBuilder::new(&app_handle, "SRT Editor")
-                .text("about", "关于 SRT Editor")
+            let app_menu = SubmenuBuilder::new(&app_handle, "VoSub")
+                .text("about", "关于 VoSub")
                 .separator()
-                .text("quit", "退出 SRT Editor")
+                .text("quit", "退出 VoSub")
                 .build()
                 .map_err(|e| e.to_string())?;
 
@@ -741,10 +741,10 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             {
                 // 在 macOS 上，第一个子菜单会自动成为应用菜单
-                let app_menu = SubmenuBuilder::new(app, "SRT Editor")
-                    .text("about", "关于 SRT Editor")
+                let app_menu = SubmenuBuilder::new(app, "VoSub")
+                    .text("about", "关于 VoSub")
                     .separator()
-                    .text("quit", "退出 SRT Editor")
+                    .text("quit", "退出 VoSub")
                     .build()?;
 
                 // 创建 打开最近的文件 子菜单
@@ -1121,7 +1121,7 @@ pub fn run() {
                     // 开发环境输出到控制台
                     Target::new(TargetKind::Stdout),
                     // 日志文件，自动存储在系统日志目录
-                    Target::new(TargetKind::LogDir { file_name: Some("srt-editor".into()) }),
+                    Target::new(TargetKind::LogDir { file_name: Some("vosub".into()) }),
                 ])
                 .timezone_strategy(TimezoneStrategy::UseLocal)
                 // 日志轮转：保留所有日志文件，文件名包含日期（超过 40KB 后轮转）

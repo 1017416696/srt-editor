@@ -1,5 +1,5 @@
 [package]
-name = "srt-editor"
+name = "vosub"
 version = "2.9.0"
 description = "A professional SRT subtitle editor"
 authors = ["you"]
