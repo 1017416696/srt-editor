@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- V 更小，波形居中对称 -->
+  <defs>
+    <linearGradient id="bg6" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0ea5e9"/>
+      <stop offset="100%" style="stop-color:#6366f1"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- 圆角背景 -->
+  <rect x="32" y="32" width="448" height="448" rx="96" fill="url(#bg6)"/>
+  
+  <!-- 更小的 V -->
+  <path d="M150 150 L256 310 L362 150" 
+        stroke="#fff" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  
+  <!-- 波形下划线（居中：以256为中心，左右各延伸120） -->
+  <path d="M136 390 Q176 360 216 390 T296 390 T376 390" 
+        stroke="#fff" stroke-width="14" stroke-linecap="round" fill="none" opacity="0.8"/>
+</svg>
