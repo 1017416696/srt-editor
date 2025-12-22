@@ -6,6 +6,7 @@ import { useSmartDictionaryStore } from '@/stores/smartDictionary'
 import { Setting, Key, InfoFilled, ChatDotRound, Message, Document, Microphone, FolderOpened, Collection } from '@element-plus/icons-vue'
 import { open } from '@tauri-apps/plugin-shell'
 import { invoke } from '@tauri-apps/api/core'
+import { checkForUpdates, getCurrentVersion, type ReleaseInfo } from '@/utils/updater'
 import {
   CHINESE_PUNCTUATION,
   ENGLISH_PUNCTUATION,
@@ -1032,7 +1033,130 @@ const splitShortcut = (key: string): string[] => {
 }
 
 // 应用版本
-const appVersion = '1.0.2'
+const appVersion = ref('1.0.2')
+
+// 检查更新相关
+const isCheckingUpdate = ref(false)
+const isDownloadingUpdate = ref(false)
+const updateDownloadProgress = ref(0)
+const updateDownloadMessage = ref('')
+const downloadedFilePath = ref('')
+const updateCheckResult = ref<{
+  hasUpdate: boolean
+  latestVersion?: string
+  releaseInfo?: ReleaseInfo
+  error?: string
+} | null>(null)
+
+// 获取真实版本号
+const fetchAppVersion = async () => {
+  try {
+    appVersion.value = await getCurrentVersion()
+  } catch {
+    // 保持默认值
+  }
+}
+fetchAppVersion()
+
+// 手动检查更新
+const manualCheckUpdate = async () => {
+  isCheckingUpdate.value = true
+  updateCheckResult.value = null
+  downloadedFilePath.value = ''
+
+  try {
+    const result = await checkForUpdates()
+    updateCheckResult.value = result
+
+    if (result.error) {
+      ElMessage.error(result.error)
+    } else if (result.hasUpdate) {
+      ElMessage.success(`发现新版本 ${result.latestVersion}`)
+    } else {
+      ElMessage.success('当前已是最新版本')
+    }
+  } catch (error) {
+    ElMessage.error('检查更新失败')
+  } finally {
+    isCheckingUpdate.value = false
+  }
+}
+
+// 获取当前平台对应的下载资源
+const getPlatformAsset = (assets: ReleaseInfo['assets']) => {
+  const platform = navigator.platform.toLowerCase()
+  let patterns: string[] = []
+
+  if (platform.includes('mac')) {
+    patterns = ['.dmg', '.app.tar.gz', 'darwin', 'macos']
+  } else if (platform.includes('win')) {
+    patterns = ['.msi', '.exe', '-setup', 'windows']
+  } else {
+    patterns = ['.AppImage', '.deb', '.rpm', 'linux']
+  }
+
+  for (const pattern of patterns) {
+    const asset = assets.find((a) => a.name.toLowerCase().includes(pattern.toLowerCase()))
+    if (asset) return asset
+  }
+  return assets[0] || null
+}
+
+// 下载更新
+const downloadUpdate = async () => {
+  if (!updateCheckResult.value?.releaseInfo) return
+
+  const asset = getPlatformAsset(updateCheckResult.value.releaseInfo.assets)
+  if (!asset) {
+    ElMessage.error('未找到适合当前平台的安装包')
+    return
+  }
+
+  isDownloadingUpdate.value = true
+  updateDownloadProgress.value = 0
+  updateDownloadMessage.value = '准备下载...'
+
+  // 监听下载进度
+  const unlisten = await listen<{ progress: number; status: string; message: string }>(
+    'update-download-progress',
+    (event) => {
+      updateDownloadProgress.value = event.payload.progress
+      updateDownloadMessage.value = event.payload.message
+    }
+  )
+
+  try {
+    const filePath = await invoke<string>('download_update', {
+      downloadUrl: asset.browserDownloadUrl,
+      fileName: asset.name,
+    })
+    downloadedFilePath.value = filePath
+    ElMessage.success('下载完成')
+  } catch (error) {
+    ElMessage.error(`下载失败: ${error}`)
+  } finally {
+    isDownloadingUpdate.value = false
+    unlisten()
+  }
+}
+
+// 在文件管理器中显示下载的文件
+const showDownloadedFile = async () => {
+  if (downloadedFilePath.value) {
+    try {
+      await invoke('show_file_in_folder', { path: downloadedFilePath.value })
+    } catch {
+      ElMessage.error('无法打开文件位置')
+    }
+  }
+}
+
+// 打开更新下载页面（备用）
+const openUpdatePage = () => {
+  if (updateCheckResult.value?.releaseInfo?.htmlUrl) {
+    open(updateCheckResult.value.releaseInfo.htmlUrl)
+  }
+}
 
 // 标点符号列表折叠状态
 const punctuationExpanded = ref(false)
@@ -2156,6 +2280,54 @@ const shortcutCategories = computed(() => {
                 <p class="app-desc">
                   专业的 SRT 字幕编辑器，支持音频波形可视化、AI 语音转写（Whisper/SenseVoice）、智能纠错、多格式导出等功能。
                 </p>
+
+                <!-- 检查更新 -->
+                <div class="update-section">
+                  <el-button
+                    type="primary"
+                    :loading="isCheckingUpdate"
+                    :disabled="isDownloadingUpdate"
+                    @click="manualCheckUpdate"
+                  >
+                    {{ isCheckingUpdate ? '检查中...' : '检查更新' }}
+                  </el-button>
+
+                  <div v-if="updateCheckResult" class="update-result">
+                    <template v-if="updateCheckResult.hasUpdate">
+                      <p class="update-available">
+                        发现新版本 <strong>{{ updateCheckResult.latestVersion }}</strong>
+                      </p>
+
+                      <!-- 下载进度 -->
+                      <div v-if="isDownloadingUpdate" class="download-progress">
+                        <el-progress :percentage="updateDownloadProgress" :stroke-width="8" />
+                        <p class="download-message">{{ updateDownloadMessage }}</p>
+                      </div>
+
+                      <!-- 下载完成 -->
+                      <div v-else-if="downloadedFilePath" class="download-complete">
+                        <p class="download-success">✓ 下载完成</p>
+                        <el-button size="small" type="primary" @click="showDownloadedFile">
+                          在文件夹中显示
+                        </el-button>
+                      </div>
+
+                      <!-- 下载按钮 -->
+                      <div v-else class="download-buttons">
+                        <el-button size="small" type="success" @click="downloadUpdate">
+                          下载更新
+                        </el-button>
+                        <el-button size="small" text @click="openUpdatePage">
+                          前往 GitHub
+                        </el-button>
+                      </div>
+                    </template>
+                    <template v-else-if="!updateCheckResult.error">
+                      <p class="update-latest">✓ 当前已是最新版本</p>
+                    </template>
+                  </div>
+                </div>
+
                 <div class="app-links">
                   <span class="copyright">© 2025 Penrose</span>
                 </div>
@@ -2541,6 +2713,65 @@ const shortcutCategories = computed(() => {
   line-height: 1.6;
   max-width: 360px;
   margin-bottom: 24px;
+}
+
+.update-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.update-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.update-available {
+  font-size: 14px;
+  color: #67c23a;
+}
+
+.update-available strong {
+  font-weight: 600;
+}
+
+.update-latest {
+  font-size: 14px;
+  color: #909399;
+}
+
+.download-progress {
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.download-message {
+  font-size: 12px;
+  color: #909399;
+  text-align: center;
+}
+
+.download-complete {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.download-success {
+  font-size: 14px;
+  color: #67c23a;
+}
+
+.download-buttons {
+  display: flex;
+  gap: 8px;
 }
 
 .copyright {

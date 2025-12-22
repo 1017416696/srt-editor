@@ -160,6 +160,128 @@ fn get_app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+/// 下载更新包到本地
+#[tauri::command]
+async fn download_update(
+    window: tauri::Window,
+    download_url: String,
+    file_name: String,
+) -> Result<String, String> {
+    use futures_util::StreamExt;
+    use std::io::Write;
+    
+    // 获取下载目录
+    let download_dir = dirs::download_dir()
+        .ok_or_else(|| "无法获取下载目录".to_string())?;
+    let file_path = download_dir.join(&file_name);
+    
+    // 发送初始进度
+    let _ = window.emit("update-download-progress", serde_json::json!({
+        "progress": 0,
+        "status": "downloading",
+        "message": "正在连接服务器..."
+    }));
+    
+    // 创建 HTTP 客户端
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+    
+    // 发起请求
+    let response = client
+        .get(&download_url)
+        .header("User-Agent", "VoSub-Updater")
+        .send()
+        .await
+        .map_err(|e| format!("下载请求失败: {}", e))?;
+    
+    if !response.status().is_success() {
+        return Err(format!("下载失败，HTTP 状态码: {}", response.status()));
+    }
+    
+    // 获取文件大小
+    let total_size = response.content_length().unwrap_or(0);
+    
+    // 创建文件
+    let mut file = std::fs::File::create(&file_path)
+        .map_err(|e| format!("创建文件失败: {}", e))?;
+    
+    // 流式下载
+    let mut downloaded: u64 = 0;
+    let mut stream = response.bytes_stream();
+    let mut last_progress: i32 = -1;
+    
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("下载数据失败: {}", e))?;
+        file.write_all(&chunk)
+            .map_err(|e| format!("写入文件失败: {}", e))?;
+        
+        downloaded += chunk.len() as u64;
+        
+        // 计算进度
+        let progress = if total_size > 0 {
+            ((downloaded as f64 / total_size as f64) * 100.0) as i32
+        } else {
+            0
+        };
+        
+        // 只在进度变化时发送事件（避免过多事件）
+        if progress != last_progress {
+            last_progress = progress;
+            let size_mb = downloaded as f64 / 1024.0 / 1024.0;
+            let total_mb = total_size as f64 / 1024.0 / 1024.0;
+            let _ = window.emit("update-download-progress", serde_json::json!({
+                "progress": progress,
+                "status": "downloading",
+                "message": format!("正在下载... {:.1} MB / {:.1} MB", size_mb, total_mb)
+            }));
+        }
+    }
+    
+    // 发送完成事件
+    let _ = window.emit("update-download-progress", serde_json::json!({
+        "progress": 100,
+        "status": "completed",
+        "message": "下载完成"
+    }));
+    
+    Ok(file_path.to_string_lossy().to_string())
+}
+
+/// 在 Finder/Explorer 中显示文件
+#[tauri::command]
+fn show_file_in_folder(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-R", &path])
+            .spawn()
+            .map_err(|e| format!("打开 Finder 失败: {}", e))?;
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .args(["/select,", &path])
+            .spawn()
+            .map_err(|e| format!("打开资源管理器失败: {}", e))?;
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        // 尝试使用 xdg-open 打开父目录
+        if let Some(parent) = std::path::Path::new(&path).parent() {
+            std::process::Command::new("xdg-open")
+                .arg(parent)
+                .spawn()
+                .map_err(|e| format!("打开文件管理器失败: {}", e))?;
+        }
+    }
+    
+    Ok(())
+}
+
 /// 更新 tray 进度显示
 #[tauri::command]
 fn update_tray_progress(app: tauri::AppHandle, progress: f64) -> Result<(), String> {
@@ -1417,6 +1539,9 @@ pub fn run() {
             export_fcpxml,
             // 版本信息
             get_app_version,
+            // 更新下载
+            download_update,
+            show_file_in_folder,
             // Tray 进度显示
             show_tray_progress,
             hide_tray_progress,
