@@ -26,7 +26,7 @@
     "security": {
       "csp": {
         "default-src": "'self' customprotocol: asset:",
-        "connect-src": "ipc: http://ipc.localhost",
+        "connect-src": "ipc: http://ipc.localhost https://api.github.com https://github.com",
         "font-src": "'self",
         "img-src": "'self' asset: http://asset.localhost blob: data:",
         "media-src": "'self' asset: http://asset.localhost blob: data:",

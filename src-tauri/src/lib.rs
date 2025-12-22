@@ -149,6 +149,12 @@ fn get_log_path(app_handle: tauri::AppHandle) -> Result<String, String> {
     Ok(log_dir.to_string_lossy().to_string())
 }
 
+/// 获取应用版本号
+#[tauri::command]
+fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 /// 在系统文件管理器中打开日志目录
 #[tauri::command]
 fn show_log_in_folder(app_handle: tauri::AppHandle) -> Result<(), String> {
@@ -1335,7 +1341,9 @@ pub fn run() {
             export_txt,
             export_vtt,
             export_markdown,
-            export_fcpxml
+            export_fcpxml,
+            // 版本信息
+            get_app_version
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

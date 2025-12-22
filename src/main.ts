@@ -785,3 +785,54 @@ setTimeout(async () => {
 listen<string>('file-association-open', async (event) => {
   await openFileFromAssociation(event.payload)
 }).catch(() => { })
+
+// 检查更新
+const checkForAppUpdates = async () => {
+  try {
+    const { checkForUpdates } = await import('./utils/updater')
+    const { useConfigStore } = await import('./stores/config')
+    const configStore = useConfigStore()
+
+    // 检查距离上次检查是否超过 24 小时
+    const now = Date.now()
+    const ONE_DAY = 24 * 60 * 60 * 1000
+    if (now - configStore.lastUpdateCheck < ONE_DAY) {
+      logger.debug('距离上次检查更新不足 24 小时，跳过')
+      return
+    }
+
+    const result = await checkForUpdates()
+    configStore.recordUpdateCheck()
+
+    if (result.error) {
+      logger.warn('检查更新失败', { error: result.error })
+      return
+    }
+
+    if (result.hasUpdate && result.releaseInfo) {
+      // 检查是否跳过了此版本
+      if (configStore.skippedVersion === result.latestVersion) {
+        logger.debug('用户已跳过此版本', { version: result.latestVersion })
+        return
+      }
+
+      logger.info('发现新版本', {
+        current: result.currentVersion,
+        latest: result.latestVersion,
+      })
+
+      // 触发更新提示（通过全局事件）
+      window.dispatchEvent(new CustomEvent('app-update-available', {
+        detail: {
+          currentVersion: result.currentVersion,
+          releaseInfo: result.releaseInfo,
+        },
+      }))
+    }
+  } catch (error) {
+    logger.error('检查更新时发生错误', { error: String(error) })
+  }
+}
+
+// 应用启动 3 秒后检查更新（避免影响启动速度）
+setTimeout(checkForAppUpdates, 3000)

@@ -43,6 +43,10 @@ export const useConfigStore = defineStore('config', () => {
   const defaultExportFormat = ref<string>('txt') // 默认导出格式
   const defaultFcpxmlFps = ref<number>(30) // FCPXML 默认帧率
 
+  // 更新检测设置
+  const skippedVersion = ref<string>('') // 用户跳过的版本
+  const lastUpdateCheck = ref<number>(0) // 上次检查更新的时间戳
+
   // 重置标点符号为默认值
   const resetPunctuation = () => {
     punctuationToRemove.value = DEFAULT_PUNCTUATION
@@ -108,6 +112,40 @@ export const useConfigStore = defineStore('config', () => {
         // ignore
       }
     }
+  }
+
+  // 保存更新设置
+  const saveUpdateSettings = () => {
+    localStorage.setItem('vosub-update', JSON.stringify({
+      skippedVersion: skippedVersion.value,
+      lastUpdateCheck: lastUpdateCheck.value,
+    }))
+  }
+
+  // 加载更新设置
+  const loadUpdateSettings = () => {
+    const saved = localStorage.getItem('vosub-update')
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        if (parsed.skippedVersion) skippedVersion.value = parsed.skippedVersion
+        if (parsed.lastUpdateCheck) lastUpdateCheck.value = parsed.lastUpdateCheck
+      } catch (e) {
+        // ignore
+      }
+    }
+  }
+
+  // 跳过某个版本
+  const skipVersion = (version: string) => {
+    skippedVersion.value = version
+    saveUpdateSettings()
+  }
+
+  // 记录检查更新时间
+  const recordUpdateCheck = () => {
+    lastUpdateCheck.value = Date.now()
+    saveUpdateSettings()
   }
 
   // 最近打开的文件列表
@@ -223,6 +261,7 @@ export const useConfigStore = defineStore('config', () => {
   loadPunctuation()
   loadWhisperSettings()
   loadExportSettings()
+  loadUpdateSettings()
 
   // 检测平台
   const isMac = () => typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform)
@@ -263,6 +302,8 @@ export const useConfigStore = defineStore('config', () => {
     fireredPreserveCase,
     defaultExportFormat,
     defaultFcpxmlFps,
+    skippedVersion,
+    lastUpdateCheck,
     updateConfig,
     saveConfig,
     loadConfig,
@@ -274,5 +315,7 @@ export const useConfigStore = defineStore('config', () => {
     saveWhisperSettings,
     saveExportSettings,
     loadExportSettings,
+    skipVersion,
+    recordUpdateCheck,
   }
 })
