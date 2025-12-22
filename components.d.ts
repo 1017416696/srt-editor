@@ -26,6 +26,7 @@ declare module 'vue' {
     SubtitleListPanel: typeof import('./src/components/editor/SubtitleListPanel.vue')['default']
     TimelineControls: typeof import('./src/components/editor/TimelineControls.vue')['default']
     TitleBar: typeof import('./src/components/TitleBar.vue')['default']
+    UpdateDialog: typeof import('./src/components/UpdateDialog.vue')['default']
     WaveformViewer: typeof import('./src/components/WaveformViewer.vue')['default']
   }
 }

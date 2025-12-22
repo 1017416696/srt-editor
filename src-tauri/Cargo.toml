@@ -1,6 +1,6 @@
 [package]
 name = "vosub"
-version = "1.0.1"
+version = "1.0.2"
 description = "A professional SRT subtitle editor"
 authors = ["you"]
 edition = "2021"
