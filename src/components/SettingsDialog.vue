@@ -1032,7 +1032,7 @@ const splitShortcut = (key: string): string[] => {
 }
 
 // 应用版本
-const appVersion = '1.0.0'
+const appVersion = '1.0.1'
 
 // 标点符号列表折叠状态
 const punctuationExpanded = ref(false)
