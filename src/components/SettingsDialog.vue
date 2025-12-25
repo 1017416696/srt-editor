@@ -7,6 +7,7 @@ import { Setting, Key, InfoFilled, ChatDotRound, Message, Document, Microphone, 
 import { open } from '@tauri-apps/plugin-shell'
 import { invoke } from '@tauri-apps/api/core'
 import { checkForUpdates, getCurrentVersion, type ReleaseInfo } from '@/utils/updater'
+import logger from '@/utils/logger'
 import {
   CHINESE_PUNCTUATION,
   ENGLISH_PUNCTUATION,
@@ -1077,13 +1078,17 @@ const manualCheckUpdate = async () => {
     updateCheckResult.value = result
 
     if (result.error) {
+      logger.warn('手动检查更新失败', { error: result.error })
       ElMessage.error(result.error)
     } else if (result.hasUpdate) {
+      logger.info('手动检查更新：发现新版本', { current: result.currentVersion, latest: result.latestVersion })
       ElMessage.success(`发现新版本 ${result.latestVersion}`)
     } else {
+      logger.info('手动检查更新：已是最新版本', { version: result.currentVersion })
       ElMessage.success('当前已是最新版本')
     }
   } catch (error) {
+    logger.error('手动检查更新异常', { error: String(error) })
     ElMessage.error('检查更新失败')
   } finally {
     isCheckingUpdate.value = false

@@ -1436,6 +1436,7 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_http::init())
         .plugin(
             tauri_plugin_prevent_default::Builder::new()
                 // 只阻止右键菜单，允许复制、粘贴、剪切等编辑快捷键

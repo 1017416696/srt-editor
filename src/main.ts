@@ -793,30 +793,21 @@ const checkForAppUpdates = async () => {
     const { useConfigStore } = await import('./stores/config')
     const configStore = useConfigStore()
 
-    // 检查距离上次检查是否超过 24 小时
-    const now = Date.now()
-    const ONE_DAY = 24 * 60 * 60 * 1000
-    if (now - configStore.lastUpdateCheck < ONE_DAY) {
-      logger.debug('距离上次检查更新不足 24 小时，跳过')
-      return
-    }
-
     const result = await checkForUpdates()
-    configStore.recordUpdateCheck()
 
     if (result.error) {
-      logger.warn('检查更新失败', { error: result.error })
+      logger.warn('自动检查更新失败', { error: result.error })
       return
     }
 
     if (result.hasUpdate && result.releaseInfo) {
       // 检查是否跳过了此版本
       if (configStore.skippedVersion === result.latestVersion) {
-        logger.debug('用户已跳过此版本', { version: result.latestVersion })
+        logger.debug('自动检查更新：用户已跳过此版本', { version: result.latestVersion })
         return
       }
 
-      logger.info('发现新版本', {
+      logger.info('自动检查更新：发现新版本', {
         current: result.currentVersion,
         latest: result.latestVersion,
       })
@@ -830,7 +821,7 @@ const checkForAppUpdates = async () => {
       }))
     }
   } catch (error) {
-    logger.error('检查更新时发生错误', { error: String(error) })
+    logger.error('自动检查更新异常', { error: String(error) })
   }
 }
 
