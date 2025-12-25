@@ -1013,6 +1013,14 @@ const isMac = computed(() => {
   return typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform)
 })
 
+// 🎄 检测是否为圣诞季节
+const isChristmasSeason = computed(() => {
+  const now = new Date()
+  const month = now.getMonth() + 1
+  const day = now.getDate()
+  return month === 12 && day >= 20 && day <= 31
+})
+
 // 检测是否支持 CUDA（Mac 不支持 CUDA）
 const supportsCuda = computed(() => {
   return !isMac.value
@@ -1370,6 +1378,18 @@ const shortcutCategories = computed(() => {
                     <el-option :value="50" label="50 fps" />
                     <el-option :value="60" label="60 fps" />
                   </el-select>
+                </div>
+
+                <!-- 🎄 圣诞彩蛋开关（仅在圣诞季节显示） -->
+                <div v-if="isChristmasSeason" class="setting-item">
+                  <div class="setting-info">
+                    <span class="setting-label">🎄 圣诞飘雪效果</span>
+                    <span class="setting-desc">在界面上显示飘雪动画</span>
+                  </div>
+                  <el-switch
+                    v-model="configStore.showChristmasSnow"
+                    @change="configStore.saveExportSettings()"
+                  />
                 </div>
               </div>
             </div>

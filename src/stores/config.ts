@@ -43,6 +43,9 @@ export const useConfigStore = defineStore('config', () => {
   const defaultExportFormat = ref<string>('txt') // 默认导出格式
   const defaultFcpxmlFps = ref<number>(30) // FCPXML 默认帧率
 
+  // 🎄 圣诞彩蛋设置
+  const showChristmasSnow = ref<boolean>(true) // 是否显示飘雪效果
+
   // 更新检测设置
   const skippedVersion = ref<string>('') // 用户跳过的版本
   const lastUpdateCheck = ref<number>(0) // 上次检查更新的时间戳
@@ -97,6 +100,7 @@ export const useConfigStore = defineStore('config', () => {
     localStorage.setItem('vosub-export', JSON.stringify({
       format: defaultExportFormat.value,
       fcpxmlFps: defaultFcpxmlFps.value,
+      showChristmasSnow: showChristmasSnow.value,
     }))
   }
 
@@ -108,6 +112,7 @@ export const useConfigStore = defineStore('config', () => {
         const parsed = JSON.parse(saved)
         if (parsed.format) defaultExportFormat.value = parsed.format
         if (parsed.fcpxmlFps) defaultFcpxmlFps.value = parsed.fcpxmlFps
+        if (typeof parsed.showChristmasSnow === 'boolean') showChristmasSnow.value = parsed.showChristmasSnow
       } catch (e) {
         // ignore
       }
@@ -302,6 +307,7 @@ export const useConfigStore = defineStore('config', () => {
     fireredPreserveCase,
     defaultExportFormat,
     defaultFcpxmlFps,
+    showChristmasSnow,
     skippedVersion,
     lastUpdateCheck,
     updateConfig,
