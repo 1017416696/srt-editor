@@ -58,8 +58,13 @@ export async function getCurrentVersion(): Promise<string> {
  * @returns 1 if v1 > v2, -1 if v1 < v2, 0 if equal
  */
 export function compareVersions(v1: string, v2: string): number {
-  const parts1 = v1.replace(/^v/, '').split('.').map(Number)
-  const parts2 = v2.replace(/^v/, '').split('.').map(Number)
+  // 提取纯版本号，去掉 v 前缀和任何非数字后缀（如 emoji）
+  const extractVersion = (v: string) => {
+    const match = v.match(/^v?(\d+\.\d+\.\d+)/)
+    return match ? match[1] : v.replace(/^v/, '')
+  }
+  const parts1 = extractVersion(v1).split('.').map(Number)
+  const parts2 = extractVersion(v2).split('.').map(Number)
 
   for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
     const p1 = parts1[i] || 0
