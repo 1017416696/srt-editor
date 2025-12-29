@@ -46,6 +46,10 @@ const newWordVariant = ref('')
 const newWordVariants = ref<string[]>([]) // 新增：存储多个变体标签
 const editingVariantId = ref<string | null>(null) // 当前正在编辑变体的词条ID
 const newVariantInput = ref('') // 新变体输入
+const editingCorrectId = ref<string | null>(null) // 当前正在编辑正确写法的词条ID
+const editingCorrectValue = ref('') // 编辑中的正确写法
+const editingVariantInfo = ref<{ entryId: string; variant: string } | null>(null) // 当前正在编辑的变体
+const editingVariantValue = ref('') // 编辑中的变体值
 const dictSearchQuery = ref('') // 词典搜索关键词
 const showAddWordDialog = ref(false) // 添加词条弹窗
 const addWordInputRef = ref<HTMLInputElement | null>(null) // 添加词条输入框ref
@@ -146,6 +150,68 @@ const vAutoFocus = {
 const cancelEditVariant = () => {
   editingVariantId.value = null
   newVariantInput.value = ''
+}
+
+// 开始编辑正确写法
+const startEditCorrect = (entryId: string, currentValue: string) => {
+  editingCorrectId.value = entryId
+  editingCorrectValue.value = currentValue
+}
+
+// 保存正确写法编辑
+const saveEditCorrect = (entryId: string) => {
+  const trimmed = editingCorrectValue.value.trim()
+  const currentId = editingCorrectId.value
+  
+  // 先清除编辑状态
+  editingCorrectId.value = null
+  editingCorrectValue.value = ''
+  
+  if (!trimmed || !currentId) return
+  
+  nextTick(() => {
+    const success = smartDictionary.updateCorrect(entryId, trimmed)
+    if (!success) {
+      ElMessage.warning('保存失败，可能与其他词条重复')
+    }
+  })
+}
+
+// 取消编辑正确写法
+const cancelEditCorrect = () => {
+  editingCorrectId.value = null
+  editingCorrectValue.value = ''
+}
+
+// 开始编辑变体
+const startEditVariantValue = (entryId: string, variant: string) => {
+  editingVariantInfo.value = { entryId, variant }
+  editingVariantValue.value = variant
+}
+
+// 保存变体编辑
+const saveEditVariant = () => {
+  const info = editingVariantInfo.value
+  const trimmed = editingVariantValue.value.trim()
+  
+  // 先清除编辑状态
+  editingVariantInfo.value = null
+  editingVariantValue.value = ''
+  
+  if (!info || !trimmed) return
+  
+  nextTick(() => {
+    const success = smartDictionary.updateVariant(info.entryId, info.variant, trimmed)
+    if (!success) {
+      ElMessage.warning('保存失败，可能与其他变体重复')
+    }
+  })
+}
+
+// 取消编辑变体值
+const cancelEditVariantValue = () => {
+  editingVariantInfo.value = null
+  editingVariantValue.value = ''
 }
 
 // 添加变体到词条
@@ -2086,7 +2152,23 @@ const shortcutCategories = computed(() => {
                     class="dict-entry"
                   >
                     <div class="entry-top">
-                      <span class="entry-correct">{{ entry.correct }}</span>
+                      <!-- 正确写法：支持点击编辑 -->
+                      <input
+                        v-if="editingCorrectId === entry.id"
+                        v-auto-focus
+                        v-model="editingCorrectValue"
+                        type="text"
+                        class="entry-correct-input"
+                        @keyup.enter="saveEditCorrect(entry.id)"
+                        @keyup.escape="cancelEditCorrect"
+                        @blur="saveEditCorrect(entry.id)"
+                      />
+                      <span 
+                        v-else
+                        class="entry-correct editable"
+                        @click="startEditCorrect(entry.id, entry.correct)"
+                        title="点击编辑"
+                      >{{ entry.correct }}</span>
                       <div class="entry-actions">
                         <span v-if="entry.useCount > 0" class="entry-count">已用 {{ entry.useCount }} 次</span>
                         <button class="entry-delete" @click="removeWord(entry.id)">×</button>
@@ -2094,14 +2176,32 @@ const shortcutCategories = computed(() => {
                     </div>
                     
                     <div class="entry-variants">
-                      <span 
-                        v-for="(variant, idx) in entry.variants" 
-                        :key="idx" 
-                        class="variant-tag"
-                      >
-                        {{ variant }}
-                        <button @click="removeVariantFromEntry(entry.id, variant)">×</button>
-                      </span>
+                      <template v-for="(variant, idx) in entry.variants" :key="idx">
+                        <!-- 变体：支持点击编辑 -->
+                        <span 
+                          v-if="editingVariantInfo?.entryId === entry.id && editingVariantInfo?.variant === variant"
+                          class="variant-tag editing"
+                        >
+                          <input
+                            v-auto-focus
+                            v-model="editingVariantValue"
+                            type="text"
+                            class="variant-edit-input"
+                            @keyup.enter="saveEditVariant"
+                            @keyup.escape="cancelEditVariantValue"
+                            @blur="saveEditVariant"
+                          />
+                        </span>
+                        <span 
+                          v-else
+                          class="variant-tag editable"
+                          @click="startEditVariantValue(entry.id, variant)"
+                          title="点击编辑"
+                        >
+                          {{ variant }}
+                          <button @click.stop="removeVariantFromEntry(entry.id, variant)">×</button>
+                        </span>
+                      </template>
                       
                       <div v-if="editingVariantId === entry.id" class="variant-input">
                         <input 
@@ -3686,6 +3786,30 @@ const shortcutCategories = computed(() => {
   color: #10b981;
 }
 
+.entry-correct.editable {
+  cursor: pointer;
+  padding: 2px 6px;
+  margin: -2px -6px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.entry-correct.editable:hover {
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.entry-correct-input {
+  font-size: 15px;
+  font-weight: 600;
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid #10b981;
+  border-radius: 4px;
+  padding: 2px 6px;
+  outline: none;
+  min-width: 100px;
+}
+
 .entry-actions {
   display: flex;
   align-items: center;
@@ -3733,6 +3857,31 @@ const shortcutCategories = computed(() => {
   background: #fef3c7;
   color: #92400e;
   border-radius: 4px;
+}
+
+.variant-tag.editable {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.variant-tag.editable:hover {
+  background: #fde68a;
+}
+
+.variant-tag.editing {
+  padding: 0;
+  background: transparent;
+}
+
+.variant-edit-input {
+  font-size: 12px;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 4px;
+  padding: 2px 6px;
+  outline: none;
+  min-width: 60px;
 }
 
 .variant-tag button {

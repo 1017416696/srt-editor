@@ -107,6 +107,44 @@ export const useSmartDictionaryStore = defineStore('smartDictionary', () => {
     }
   }
 
+  // ========== 修改正确写法 ==========
+  const updateCorrect = (id: string, newCorrect: string): boolean => {
+    const trimmed = newCorrect.trim()
+    if (!trimmed) return false
+    
+    const entry = entries.value.find(e => e.id === id)
+    if (!entry) return false
+    
+    // 检查是否与其他词条重复
+    const duplicate = entries.value.find(e => e.id !== id && e.correct === trimmed)
+    if (duplicate) return false
+    
+    entry.correct = trimmed
+    save()
+    logger.info('修改词典正确写法', { id, newCorrect: trimmed })
+    return true
+  }
+
+  // ========== 修改变体 ==========
+  const updateVariant = (id: string, oldVariant: string, newVariant: string): boolean => {
+    const trimmed = newVariant.trim()
+    if (!trimmed) return false
+    
+    const entry = entries.value.find(e => e.id === id)
+    if (!entry) return false
+    
+    const index = entry.variants.indexOf(oldVariant)
+    if (index === -1) return false
+    
+    // 检查是否重复
+    if (entry.variants.includes(trimmed) && oldVariant !== trimmed) return false
+    
+    entry.variants[index] = trimmed
+    save()
+    logger.info('修改词典变体', { id, oldVariant, newVariant: trimmed })
+    return true
+  }
+
   const removeVariant = (id: string, variant: string) => {
     const entry = entries.value.find(e => e.id === id)
     if (entry) {
@@ -190,6 +228,8 @@ export const useSmartDictionaryStore = defineStore('smartDictionary', () => {
     addManual,
     removeEntry,
     addVariant,
+    updateCorrect,
+    updateVariant,
     removeVariant,
     clearAll,
     matchesDictionary,
