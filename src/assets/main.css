@@ -616,3 +616,83 @@ input, textarea {
 .christmas-season .subtitle-block.is-selected:hover {
   outline-color: #b91c1c !important;
 }
+
+/* ==================== Driver.js 引导样式 ==================== */
+.vosub-tour-popover {
+  background: var(--el-bg-color) !important;
+  color: var(--el-text-color-primary) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2) !important;
+  max-width: 320px !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+}
+
+.vosub-tour-popover * {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+}
+
+.vosub-tour-popover .driver-popover-title {
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  color: var(--el-text-color-primary) !important;
+}
+
+.vosub-tour-popover .driver-popover-description {
+  font-size: 14px !important;
+  color: var(--el-text-color-secondary) !important;
+  line-height: 1.6 !important;
+}
+
+.vosub-tour-popover .driver-popover-progress-text {
+  font-size: 12px !important;
+  color: var(--el-text-color-placeholder) !important;
+}
+
+.vosub-tour-popover .driver-popover-prev-btn,
+.vosub-tour-popover .driver-popover-next-btn {
+  border-radius: 6px !important;
+  font-size: 13px !important;
+  padding: 6px 14px !important;
+  transition: all 0.2s !important;
+}
+
+.vosub-tour-popover .driver-popover-prev-btn {
+  background: var(--el-fill-color) !important;
+  color: var(--el-text-color-regular) !important;
+  border: none !important;
+}
+
+.vosub-tour-popover .driver-popover-prev-btn:hover {
+  background: var(--el-fill-color-dark) !important;
+}
+
+.vosub-tour-popover .driver-popover-next-btn {
+  background: var(--el-color-primary) !important;
+  color: white !important;
+  border: none !important;
+}
+
+.vosub-tour-popover .driver-popover-next-btn:hover {
+  background: var(--el-color-primary-dark-2) !important;
+}
+
+.vosub-tour-popover .driver-popover-close-btn {
+  color: var(--el-text-color-secondary) !important;
+}
+
+.vosub-tour-popover .driver-popover-close-btn:hover {
+  color: var(--el-text-color-primary) !important;
+}
+
+.vosub-tour-popover .driver-popover-arrow-side-left,
+.vosub-tour-popover .driver-popover-arrow-side-right,
+.vosub-tour-popover .driver-popover-arrow-side-top,
+.vosub-tour-popover .driver-popover-arrow-side-bottom {
+  border-color: var(--el-bg-color) !important;
+}

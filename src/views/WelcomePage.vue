@@ -11,6 +11,7 @@ import { useSubtitleStore } from '@/stores/subtitle'
 import { useAudioStore } from '@/stores/audio'
 import { useConfigStore } from '@/stores/config'
 import { useSmartDictionaryStore } from '@/stores/smartDictionary'
+import WelcomeGuide from '@/components/WelcomeGuide.vue'
 import type { SRTFile, AudioFile, SubtitleEntry } from '@/types/subtitle'
 
 interface WhisperModelInfo {
@@ -50,6 +51,9 @@ const isChristmasSeason = computed(() => {
 const isDragging = ref(false)
 const isLoading = ref(false)
 const loadingMessage = ref('')
+
+// 新手引导
+const showWelcomeGuide = ref(false)
 
 const showTranscriptionDialog = ref(false)
 const availableModels = ref<WhisperModelInfo[]>([])
@@ -172,7 +176,18 @@ onMounted(async () => {
   try { availableModels.value = await invoke<WhisperModelInfo[]>('get_whisper_models_cmd') } catch (e) { console.error(e) }
   // 检查 SenseVoice 环境
   try { sensevoiceEnvStatus.value = await invoke<SenseVoiceEnvStatus>('check_sensevoice_env_status') } catch (e) { console.error(e) }
+
+  // 首次使用显示新手引导
+  if (!configStore.onboardingState.welcomePageSeen) {
+    showWelcomeGuide.value = true
+  }
 })
+
+// 关闭欢迎页引导
+const closeWelcomeGuide = () => {
+  showWelcomeGuide.value = false
+  configStore.markWelcomePageSeen()
+}
 
 onUnmounted(() => {
   if (unlistenFileDrop) unlistenFileDrop()
@@ -760,6 +775,9 @@ const getWhisperModelDesc = (modelName: string): string => {
         <p>释放以打开文件</p>
       </div>
     </div>
+
+    <!-- 新手引导 -->
+    <WelcomeGuide v-if="showWelcomeGuide" @close="closeWelcomeGuide" />
 
     <!-- 转录进度对话框 -->
     <el-dialog 

@@ -1,5 +1,5 @@
 <template>
-  <div class="timeline-editor">
+  <div class="timeline-editor waveform-container">
     <!-- 时间轴主区域 -->
     <div class="timeline-container" ref="timelineContainerRef">
       <!-- 左侧轨道控制面板 -->

@@ -50,6 +50,12 @@ export const useConfigStore = defineStore('config', () => {
   const skippedVersion = ref<string>('') // 用户跳过的版本
   const lastUpdateCheck = ref<number>(0) // 上次检查更新的时间戳
 
+  // 新手引导状态
+  const onboardingState = ref({
+    welcomePageSeen: false, // 欢迎页引导已看
+    editorTourCompleted: false, // 编辑器引导已完成
+  })
+
   // 重置标点符号为默认值
   const resetPunctuation = () => {
     punctuationToRemove.value = DEFAULT_PUNCTUATION
@@ -151,6 +157,45 @@ export const useConfigStore = defineStore('config', () => {
   const recordUpdateCheck = () => {
     lastUpdateCheck.value = Date.now()
     saveUpdateSettings()
+  }
+
+  // 保存引导状态
+  const saveOnboardingState = () => {
+    localStorage.setItem('vosub-onboarding', JSON.stringify(onboardingState.value))
+  }
+
+  // 加载引导状态
+  const loadOnboardingState = () => {
+    const saved = localStorage.getItem('vosub-onboarding')
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        onboardingState.value = { ...onboardingState.value, ...parsed }
+      } catch (e) {
+        // ignore
+      }
+    }
+  }
+
+  // 标记欢迎页引导已看
+  const markWelcomePageSeen = () => {
+    onboardingState.value.welcomePageSeen = true
+    saveOnboardingState()
+  }
+
+  // 标记编辑器引导已完成
+  const markEditorTourCompleted = () => {
+    onboardingState.value.editorTourCompleted = true
+    saveOnboardingState()
+  }
+
+  // 重置引导状态（用于重新查看引导）
+  const resetOnboarding = () => {
+    onboardingState.value = {
+      welcomePageSeen: false,
+      editorTourCompleted: false,
+    }
+    saveOnboardingState()
   }
 
   // 最近打开的文件列表
@@ -267,6 +312,7 @@ export const useConfigStore = defineStore('config', () => {
   loadWhisperSettings()
   loadExportSettings()
   loadUpdateSettings()
+  loadOnboardingState()
 
   // 检测平台
   const isMac = () => typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform)
@@ -310,6 +356,7 @@ export const useConfigStore = defineStore('config', () => {
     showChristmasSnow,
     skippedVersion,
     lastUpdateCheck,
+    onboardingState,
     updateConfig,
     saveConfig,
     loadConfig,
@@ -323,5 +370,8 @@ export const useConfigStore = defineStore('config', () => {
     loadExportSettings,
     skipVersion,
     recordUpdateCheck,
+    markWelcomePageSeen,
+    markEditorTourCompleted,
+    resetOnboarding,
   }
 })

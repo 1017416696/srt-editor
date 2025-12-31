@@ -37,7 +37,7 @@ const hasAudio = computed(() => audioStore.currentAudio !== null)
 
 <template>
   <!-- 一体化控制栏：音频名称 + 缩放 + 播放 + 时长 + 音量 + 速度 -->
-  <div v-if="hasAudio" class="timeline-unified-controls">
+  <div v-if="hasAudio" class="timeline-unified-controls timeline-controls">
     <!-- 左侧组：文件信息 + 缩放 -->
     <div class="controls-left">
       <div class="audio-file-info">

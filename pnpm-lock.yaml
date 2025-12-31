@@ -32,6 +32,9 @@ importers:
       '@vueuse/core':
         specifier: ^14.0.0
         version: 14.0.0(vue@3.5.23(typescript@5.9.3))
+      driver.js:
+        specifier: ^1.4.0
+        version: 1.4.0
       element-plus:
         specifier: ^2.11.8
         version: 2.11.8(vue@3.5.23(typescript@5.9.3))
@@ -1677,6 +1680,9 @@ packages:
   domain-browser@4.22.0:
     resolution: {integrity: sha512-IGBwjF7tNk3cwypFNH/7bfzBcgSCbaMOD3GsaY1AU/JRrnHnYgEM0+9kQt52iZxjNsjBtJYtao146V+f8jFZNw==}
     engines: {node: '>=10'}
+
+  driver.js@1.4.0:
+    resolution: {integrity: sha512-Gm64jm6PmcU+si21sQhBrTAM1JvUrR0QhNmjkprNLxohOBzul9+pNHXgQaT9lW84gwg9GMLB3NZGuGolsz5uew==, tarball: https://registry.npmmirror.com/driver.js/-/driver.js-1.4.0.tgz}
 
   dunder-proto@1.0.1:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
@@ -4864,6 +4870,8 @@ snapshots:
       randombytes: 2.1.0
 
   domain-browser@4.22.0: {}
+
+  driver.js@1.4.0: {}
 
   dunder-proto@1.0.1:
     dependencies:

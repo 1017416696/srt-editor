@@ -1043,6 +1043,13 @@ const handleClose = () => {
   emit('update:visible', false)
 }
 
+// 重新查看引导
+const restartOnboarding = () => {
+  configStore.resetOnboarding()
+  handleClose()
+  ElMessage.success('引导已重置，下次打开软件时将显示新手引导')
+}
+
 // ESC 键关闭弹窗
 const handleKeydown = (e: KeyboardEvent) => {
   // 如果添加词条弹窗打开，不处理ESC（让添加词条弹窗处理）
@@ -1461,6 +1468,17 @@ const shortcutCategories = computed(() => {
                     v-model="configStore.showChristmasSnow"
                     @change="configStore.saveExportSettings()"
                   />
+                </div>
+
+                <!-- 重新查看引导 -->
+                <div class="setting-item">
+                  <div class="setting-info">
+                    <span class="setting-label">新手引导</span>
+                    <span class="setting-desc">重新查看软件使用引导</span>
+                  </div>
+                  <el-button size="small" @click="restartOnboarding">
+                    重新查看
+                  </el-button>
                 </div>
               </div>
             </div>

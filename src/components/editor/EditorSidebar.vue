@@ -28,7 +28,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="sidebar">
+  <div class="sidebar editor-sidebar">
     <div class="sidebar-top">
       <button
         class="sidebar-btn"

@@ -25,6 +25,7 @@
     "@types/howler": "^2.2.12",
     "@vue/devtools": "^8.0.3",
     "@vueuse/core": "^14.0.0",
+    "driver.js": "^1.4.0",
     "element-plus": "^2.11.8",
     "howler": "^2.2.4",
     "pinia": "^3.0.3",

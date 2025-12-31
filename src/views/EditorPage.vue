@@ -11,6 +11,7 @@ import { useTabManagerStore } from '@/stores/tabManager'
 import { useSmartDictionaryStore } from '@/stores/smartDictionary'
 import { timeStampToMs } from '@/utils/time'
 import { findVoiceRegion, timestampToMs, msToTimestamp } from '@/utils/waveformAlign'
+import { useEditorTour } from '@/composables/useEditorTour'
 import type { SRTFile, AudioFile, TimeStamp } from '@/types/subtitle'
 import type { CorrectionEntry, CorrectionEntryWithChoice, FireRedEnvStatus } from '@/types/correction'
 import WaveformViewer from '@/components/WaveformViewer.vue'
@@ -29,6 +30,7 @@ const audioStore = useAudioStore()
 const configStore = useConfigStore()
 const tabManager = useTabManagerStore()
 const smartDictionary = useSmartDictionaryStore()
+const { startTour, shouldShowTour } = useEditorTour()
 
 // UI 状态
 const searchText = ref('')
@@ -1504,6 +1506,11 @@ onMounted(async () => {
     document.addEventListener('keyup', handleAltKeyUp)
   } catch (error) {
     console.error('Error setting up menu handlers:', error)
+  }
+
+  // 首次进入编辑器显示引导
+  if (shouldShowTour()) {
+    setTimeout(() => startTour(), 500)
   }
 })
 
